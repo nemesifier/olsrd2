@@ -233,9 +233,11 @@ _cleanup(void) {
   if (_config.www_dir_fd != -1) {
     close(_config.www_dir_fd);
   }
+
   oonf_http_remove(&_telnet_handler);
   oonf_http_remove(&_file_handler);
   oonf_stream_remove_managed(&_http_managed_socket, true);
+  oonf_stream_free_managed_config(&_config.smc);
 }
 
 /**

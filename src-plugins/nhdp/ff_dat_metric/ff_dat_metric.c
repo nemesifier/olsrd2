@@ -346,7 +346,7 @@ _init(void) {
   oonf_timer_add(&_sampling_timer_info);
   oonf_timer_add(&_hello_lost_info);
 
-  _protocol = oonf_rfc5444_add_protocol(RFC5444_PROTOCOL, true);
+  _protocol = oonf_rfc5444_get_default_protocol();
 
   oonf_rfc5444_add_protocol_pktseqno(_protocol);
 #ifdef COLLECT_RAW_DATA
@@ -375,7 +375,7 @@ _cleanup(void) {
   nhdp_domain_metric_remove(&_datff_handler);
 
   oonf_rfc5444_remove_protocol_pktseqno(_protocol);
-  oonf_rfc5444_remove_protocol(_protocol);
+  _protocol = NULL;
 
   oonf_class_extension_remove(&_link_extenstion);
 

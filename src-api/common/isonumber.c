@@ -182,6 +182,9 @@ isonumber_to_u64(uint64_t *dst, const char *iso, int fraction, bool binary) {
   }
 
   if (*next == 0) {
+    for (frac = 0; frac < fraction; frac++) {
+      num *= 10;
+    }
     *dst = num;
     return 0;
   }
@@ -310,9 +313,8 @@ _isonumber_u64_to_string(char *out, size_t out_len,
   out[len++] = '.';
   n = number;
 
-  if (*unit_modifier != ' ') {
-    fraction = 3;
-  }
+  /* show three fractional digits */
+  fraction = 3;
 
   while (true) {
     n = n % multiplier;
@@ -334,8 +336,7 @@ _isonumber_u64_to_string(char *out, size_t out_len,
     }
   }
 
-  if (!raw) {
-    out[idx++] = ' ';
+  if (!raw && *unit_modifier != ' ') {
     out[idx++] = *unit_modifier;
   }
   out[idx++] = 0;

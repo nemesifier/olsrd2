@@ -88,9 +88,6 @@ enum {
   RFC5444_ADDRTLV_BUFFER = 65536,
 };
 
-/*! Protocol name for IANA allocated MANET port */
-#define RFC5444_PROTOCOL "rfc5444_default"
-
 /*! Interface name for unicast targets */
 #define RFC5444_UNICAST_INTERFACE OONF_INTERFACE_WILDCARD
 
@@ -261,6 +258,7 @@ EXPORT struct oonf_rfc5444_protocol *oonf_rfc5444_add_protocol(
 EXPORT void oonf_rfc5444_remove_protocol(struct oonf_rfc5444_protocol *);
 EXPORT void oonf_rfc5444_reconfigure_protocol(
     struct oonf_rfc5444_protocol *, uint16_t port, int ip_proto);
+EXPORT struct oonf_rfc5444_protocol *oonf_rfc5444_get_default_protocol(void);
 
 EXPORT struct oonf_rfc5444_interface *oonf_rfc5444_add_interface(
     struct oonf_rfc5444_protocol *protocol,
@@ -285,6 +283,18 @@ EXPORT enum rfc5444_result oonf_rfc5444_send_all(
     uint8_t msgid, uint8_t addr_len, rfc5444_writer_targetselector useIf);
 
 EXPORT void oonf_rfc5444_block_output(bool block);
+
+/**
+ * @param protocol RFC5444 protocol
+ * @param name interface name
+ * @return RFC5444 interface, NULL if not found
+ */
+static INLINE struct oonf_rfc5444_interface *
+oonf_rfc5444_get_interface(
+    struct oonf_rfc5444_protocol *protocol, const char *name) {
+  struct oonf_rfc5444_interface *interf;
+  return avl_find_element(&protocol->_interface_tree, name, interf, _node);
+}
 
 /**
  * Flush a target and send out the message/packet immediately

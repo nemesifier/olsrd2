@@ -133,7 +133,7 @@ static struct oonf_rfc5444_protocol *_protocol = NULL;
  */
 static int
 _init(void) {
-  _protocol = oonf_rfc5444_add_protocol(RFC5444_PROTOCOL, true);
+  _protocol = oonf_rfc5444_get_default_protocol();
   if (_protocol == NULL) {
     return -1;
   }
@@ -157,8 +157,6 @@ _cleanup(void) {
       &_protocol->reader, &_nhdp_message_consumer);
   rfc5444_reader_remove_message_consumer(
       &_protocol->reader, &_nhdp_address_consumer);
-
-  oonf_rfc5444_remove_protocol(_protocol);
   _protocol = NULL;
 }
 

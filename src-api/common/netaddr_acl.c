@@ -70,6 +70,9 @@ netaddr_acl_remove(struct netaddr_acl *acl) {
   free(acl->reject);
 
   memset(acl, 0, sizeof(*acl));
+
+  assert(acl->accept == NULL);
+  assert(acl->reject == NULL);
 }
 
 /**
@@ -87,8 +90,8 @@ netaddr_acl_from_strarray(struct netaddr_acl *acl,
   accept_count = 0;
   reject_count = 0;
 
-  /* clear acl struct */
-  memset(acl, 0, sizeof(*acl));
+  /* clear acl struct and free existing data */
+  netaddr_acl_remove(acl);
 
   /* count number of address entries */
   strarray_for_each_element(value, ptr) {

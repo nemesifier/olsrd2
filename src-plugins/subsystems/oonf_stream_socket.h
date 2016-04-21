@@ -249,6 +249,9 @@ struct oonf_stream_socket {
   /*! optional back pointer for managed tcp sockets */
   struct oonf_stream_managed *managed;
 
+  /*! number of currently active sessions */
+  int32_t session_counter;
+
   /*! true if socket is currently busy in scheduler */
   bool busy;
 

@@ -62,6 +62,12 @@
 /* Definitions */
 #define LOG_TELNET _oonf_telnet_subsystem.logging
 
+struct _telnet_config {
+  struct oonf_stream_managed_config osmc;
+  int32_t allowed_sessions;
+  uint64_t timeout;
+};
+
 /* static function prototypes */
 static int _init(void);
 static void _cleanup(void);
@@ -90,12 +96,16 @@ static enum oonf_telnet_result _cb_telnet_timeout(struct oonf_telnet_data *data)
 
 /* configuration of telnet server */
 static struct cfg_schema_entry _telnet_entries[] = {
-  CFG_MAP_ACL_V46(oonf_stream_managed_config,
-      acl, "acl", ACL_DEFAULT_ACCEPT, "Access control list for telnet interface"),
-  CFG_MAP_ACL(oonf_stream_managed_config,
-      bindto, "bindto", "127.0.0.1\0" "::1\0" ACL_DEFAULT_REJECT, "Allowed addressed to bind telnet socket to"),
-  CFG_MAP_INT32_MINMAX(oonf_stream_managed_config,
-      port, "port", "2009", "Network port for telnet interface", 0, false, 1, 65535),
+  CFG_MAP_ACL_V46(_telnet_config, osmc.acl,
+      "acl", ACL_DEFAULT_ACCEPT, "Access control list for telnet interface"),
+  CFG_MAP_ACL(_telnet_config, osmc.bindto,
+      "bindto", "127.0.0.1\0" "::1\0" ACL_DEFAULT_REJECT, "Allowed addressed to bind telnet socket to"),
+  CFG_MAP_INT32_MINMAX(_telnet_config, osmc.port,
+      "port", "2009", "Network port for telnet interface", 0, false, 1, 65535),
+  CFG_MAP_INT32_MINMAX(_telnet_config, allowed_sessions,
+      "allowed_sessions", "3", "Maximum number of allowed simultaneous sessions",0, false, 3, 1024),
+  CFG_MAP_CLOCK(_telnet_config, timeout,
+      "timeout", "120000", "Time until a telnet session is closed when idle"),
 };
 
 static struct cfg_schema_section _telnet_section = {
@@ -151,7 +161,6 @@ static struct oonf_timer_class _telnet_repeat_timerinfo = {
 static struct oonf_stream_managed _telnet_managed = {
   .config = {
     .session_timeout = 120000, /* 120 seconds */
-    .maximum_input_buffer = 4096,
     .allowed_sessions = 3,
     .memcookie = &_telnet_memcookie,
     .init = _cb_telnet_init,
@@ -279,32 +288,6 @@ _avl_comp_strcmdword(const void *ptr1, const void *ptr2) {
     diff = 0;
   }
   return diff;
-}
-
-/**
- * Handler for configuration changes
- */
-static void
-_cb_config_changed(void) {
-  struct oonf_stream_managed_config config;
-
-  /* generate binary config */
-  memset(&config, 0, sizeof(config));
-  if (cfg_schema_tobin(&config, _telnet_section.post,
-      _telnet_entries, ARRAYSIZE(_telnet_entries))) {
-    /* error in conversion */
-    OONF_WARN(LOG_TELNET, "Cannot map telnet config to binary data");
-    goto apply_config_failed;
-  }
-
-  if (oonf_stream_apply_managed(&_telnet_managed, &config)) {
-    /* error while updating sockets */
-    goto apply_config_failed;
-  }
-
-  /* fall through */
-apply_config_failed:
-  oonf_stream_free_managed_config(&config);
 }
 
 /**
@@ -753,4 +736,34 @@ _cb_telnet_repeat(struct oonf_telnet_data *data) {
   }
 
   return TELNET_RESULT_CONTINOUS;
+}
+
+/**
+ * Handler for configuration changes
+ */
+static void
+_cb_config_changed(void) {
+  struct _telnet_config config;
+
+  /* generate binary config */
+  memset(&config, 0, sizeof(config));
+  if (cfg_schema_tobin(&config, _telnet_section.post,
+      _telnet_entries, ARRAYSIZE(_telnet_entries))) {
+    /* error in conversion */
+    OONF_WARN(LOG_TELNET, "Cannot map telnet config to binary data");
+    goto apply_config_failed;
+  }
+
+  /* set session parameters */
+  _telnet_managed.config.allowed_sessions = config.allowed_sessions;
+  _telnet_managed.config.session_timeout = config.timeout;
+
+  if (oonf_stream_apply_managed(&_telnet_managed, &config.osmc)) {
+    /* error while updating sockets */
+    goto apply_config_failed;
+  }
+
+  /* fall through */
+apply_config_failed:
+  oonf_stream_free_managed_config(&config.osmc);
 }

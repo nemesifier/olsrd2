@@ -416,12 +416,15 @@ oonf_packet_copy_managed_config(struct oonf_packet_managed_config *dst,
     struct oonf_packet_managed_config *src) {
   oonf_packet_free_managed_config(dst);
 
+  /* careful, we are doing a shallow copy, so both ACLs are BAD after this */
   memcpy(dst, src, sizeof(*dst));
 
+  /* fix it to make sure we don't use-after-free or double-free */
   memset(&dst->acl, 0, sizeof(dst->acl));
-  netaddr_acl_copy(&dst->acl, &src->acl);
-
   memset(&dst->bindto, 0, sizeof(dst->bindto));
+
+  /* now do a deep copy of the ACLs */
+  netaddr_acl_copy(&dst->acl, &src->acl);
   netaddr_acl_copy(&dst->bindto, &src->bindto);
 }
 

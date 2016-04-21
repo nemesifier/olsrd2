@@ -460,7 +460,7 @@ _stream_close(struct oonf_stream_session *session) {
 
   oonf_timer_stop(&session->timeout);
 
-  session->stream_socket->config.allowed_sessions++;
+  session->stream_socket->session_counter--;
   list_remove(&session->node);
 
   oonf_socket_remove(&session->scheduler_entry);
@@ -540,7 +540,8 @@ _apply_managed_socket(int af_type, struct oonf_stream_managed *managed,
 
   if (list_is_node_added(&stream->scheduler_entry._node)) {
     if (memcmp(&sock, &stream->local_socket, sizeof(sock)) == 0) {
-      /* nothing changed */
+      /* nothing changed, just copy configuration */
+      memcpy(&stream->config, &managed->config, sizeof(stream->config));
       return 0;
     }
 
@@ -645,9 +646,10 @@ _create_session(struct oonf_stream_socket *stream_socket,
   session->remote_address = *remote_addr;
   session->remote_socket = *remote_socket;
 
-  if (stream_socket->config.allowed_sessions-- > 0) {
+  if (stream_socket->session_counter < stream_socket->config.allowed_sessions) {
     /* create active session */
     session->state = STREAM_SESSION_ACTIVE;
+    stream_socket->session_counter++;
   } else {
     /* too many sessions */
     if (stream_socket->config.create_error) {

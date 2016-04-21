@@ -212,13 +212,8 @@ _early_cfg_init(void) {
  */
 static int
 _init(void) {
-  _protocol = oonf_rfc5444_add_protocol(RFC5444_PROTOCOL, true);
-  if (_protocol == NULL) {
-    return -1;
-  }
-
+  _protocol = oonf_rfc5444_get_default_protocol();
   if (nhdp_writer_init(_protocol)) {
-    oonf_rfc5444_remove_protocol(_protocol);
     return -1;
   }
 

@@ -278,13 +278,8 @@ _init(void) {
     return -1;
   }
 
-  _protocol = oonf_rfc5444_add_protocol(RFC5444_PROTOCOL, true);
-  if (_protocol == NULL) {
-    return -1;
-  }
-
+  _protocol = oonf_rfc5444_get_default_protocol();
   if (olsrv2_writer_init(_protocol)) {
-    oonf_rfc5444_remove_protocol(_protocol);
     return -1;
   }
 
@@ -333,7 +328,7 @@ _cleanup(void) {
   olsrv2_lan_cleanup();
 
   /* free protocol instance */
-  oonf_rfc5444_remove_protocol(_protocol);
+  _protocol = NULL;
 }
 
 /**

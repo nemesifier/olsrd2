@@ -184,13 +184,9 @@ static struct rfc5444_writer_content_provider _probing_msg_provider = {
  */
 static int
 _init(void) {
-  if (oonf_class_extension_add(&_link_extenstion)) {
-    return -1;
-  }
+  _protocol = oonf_rfc5444_get_default_protocol();
 
-  _protocol = oonf_rfc5444_add_protocol(RFC5444_PROTOCOL, true);
-  if (_protocol == NULL) {
-    oonf_class_extension_remove(&_link_extenstion);
+  if (oonf_class_extension_add(&_link_extenstion)) {
     return -1;
   }
 
@@ -228,7 +224,7 @@ _cleanup(void) {
       &_protocol->writer, &_probing_msg_provider, NULL, 0);
   rfc5444_writer_unregister_message(
       &_protocol->writer, _probing_message);
-  oonf_rfc5444_remove_protocol(_protocol);
+  _protocol = NULL;
   oonf_timer_remove(&_probe_info);
   oonf_class_extension_remove(&_link_extenstion);
 }
