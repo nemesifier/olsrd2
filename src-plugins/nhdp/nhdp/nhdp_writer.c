@@ -155,7 +155,7 @@ nhdp_writer_cleanup(void) {
 void
 nhdp_writer_send_hello(struct nhdp_interface *ninterf) {
   enum rfc5444_result result;
-  struct os_interface *interf;
+  struct os_interface_listener *interf;
   struct netaddr_str buf;
 
   if (_cleanedup) {
@@ -163,8 +163,8 @@ nhdp_writer_send_hello(struct nhdp_interface *ninterf) {
     return;
   }
 
-  interf = nhdp_interface_get_coreif(ninterf);
-  if (interf->data.loopback) {
+  interf = nhdp_interface_get_if_listener(ninterf);
+  if (interf->data->flags.loopback) {
     /* no NHDP on loopback interface */
     return;
   }
@@ -258,7 +258,7 @@ _cb_addMessageTLVs(struct rfc5444_writer *writer) {
   uint8_t vtime_encoded, itime_encoded;
   struct oonf_rfc5444_target *target;
   const struct netaddr *v4_originator;
-  struct os_interface_data *ifdata;
+  struct os_interface *os_if;
   uint8_t willingness[NHDP_MAXIMUM_DOMAINS];
   size_t willingness_size;
   uint8_t mprtypes[NHDP_MAXIMUM_DOMAINS];
@@ -308,14 +308,11 @@ _cb_addMessageTLVs(struct rfc5444_writer *writer) {
   }
 
   /* add mac address of local interface */
-  ifdata = oonf_interface_get_data(target->interface->name, NULL);
-  if (ifdata == NULL) {
-    return;
-  }
+  os_if = nhdp_interface_get_if_listener(_nhdp_if)->data;
 
   if (_add_mac_tlv) {
     rfc5444_writer_add_messagetlv(writer, NHDP_MSGTLV_MAC, 0,
-        netaddr_get_binptr(&ifdata->mac), netaddr_get_binlength(&ifdata->mac));
+        netaddr_get_binptr(&os_if->mac), netaddr_get_binlength(&os_if->mac));
   }
 }
 

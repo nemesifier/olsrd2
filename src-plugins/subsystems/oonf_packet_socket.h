@@ -51,7 +51,7 @@
 #include "common/autobuf.h"
 #include "common/netaddr.h"
 #include "common/netaddr_acl.h"
-#include "subsystems/oonf_interface.h"
+#include "subsystems/os_interface.h"
 #include "subsystems/oonf_socket.h"
 
 #ifndef _WIN32
@@ -110,7 +110,7 @@ struct oonf_packet_socket {
   struct autobuf out;
 
   /*! interface data the socket is bound to */
-  struct os_interface_data *interface;
+  struct os_interface *os_if;
 
   /*! configuration of packet socket */
   struct oonf_packet_config config;
@@ -195,13 +195,13 @@ struct oonf_packet_managed {
   struct oonf_packet_managed_config _managed_config;
 
   /*! interface listener to detect changes */
-  struct oonf_interface_listener _if_listener;
+  struct os_interface_listener _if_listener;
 };
 
 EXPORT int oonf_packet_add(struct oonf_packet_socket *,
-    union netaddr_socket *local, struct os_interface_data *);
+    union netaddr_socket *local, struct os_interface *);
 EXPORT int oonf_packet_raw_add(struct oonf_packet_socket *, int protocol,
-    union netaddr_socket *local, struct os_interface_data *interf);
+    union netaddr_socket *local, struct os_interface *os_if);
 EXPORT void oonf_packet_remove(struct oonf_packet_socket *, bool);
 
 EXPORT int oonf_packet_send(struct oonf_packet_socket *,
@@ -213,13 +213,13 @@ EXPORT int oonf_packet_send_managed_multicast(
     const void *data, size_t length, int af_type);
 EXPORT void oonf_packet_add_managed(struct oonf_packet_managed *);
 EXPORT int oonf_packet_apply_managed(struct oonf_packet_managed *,
-    struct oonf_packet_managed_config *);
+    const struct oonf_packet_managed_config *);
 EXPORT void oonf_packet_remove_managed(struct oonf_packet_managed *, bool force);
 EXPORT bool oonf_packet_managed_is_active(
     struct oonf_packet_managed *managed, int af_type);
 EXPORT void oonf_packet_copy_managed_config(
     struct oonf_packet_managed_config *dst,
-    struct oonf_packet_managed_config *src);
+    const struct oonf_packet_managed_config *src);
 EXPORT void oonf_packet_free_managed_config(
     struct oonf_packet_managed_config *config);
 

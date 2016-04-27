@@ -17,7 +17,8 @@ set (CMAKE_BUILD_TYPE Debug CACHE STRING
 # maximum logging level
 set (OONF_LOGGING_LEVEL debug CACHE STRING 
      "Maximum logging level compiled into OONF API (warn, info, debug)")
-
+SET_PROPERTY(CACHE OONF_LOGGING_LEVEL PROPERTY STRINGS debug info warn)
+ 
 # remove help texts from application, core-api and plugins
 set (OONF_REMOVE_HELPTEXT false CACHE BOOL
      "Set if you want to remove the help texts from application to reduce size")

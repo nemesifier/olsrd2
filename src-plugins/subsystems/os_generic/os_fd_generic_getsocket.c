@@ -55,18 +55,19 @@
 
 /**
  * Creates a new socket and configures it
+ * @param sock empty socket instance
  * @param bind_to address to bind the socket to
  * @param tcp true for a TCP socket, false for UDP
  * @param recvbuf size of input buffer for socket
- * @param interf pointer to interface to bind socket on,
+ * @param os_if pointer to interface to bind socket on,
  *   NULL if socket should not be bound to an interface
  * @param log_src logging source for error messages
- * @return 0 if socket was created, -1 if an error happened
+ * @return -1 if an error happened, 0 otherwise
  */
 int
 os_fd_generic_getsocket(struct os_fd *sock,
     const union netaddr_socket *bind_to,
-    bool tcp, size_t recvbuf, const struct os_interface_data *interf,
+    bool tcp, size_t recvbuf, const struct os_interface *os_if,
     enum oonf_log_source log_src __attribute__((unused))) {
   int s;
   s = socket(bind_to->std.sa_family, tcp ? SOCK_STREAM : SOCK_DGRAM, 0);
@@ -80,7 +81,7 @@ os_fd_generic_getsocket(struct os_fd *sock,
     return -1;
   }
 
-  if (os_fd_configsocket(sock, bind_to, recvbuf, false, interf, log_src)) {
+  if (os_fd_configsocket(sock, bind_to, recvbuf, false, os_if, log_src)) {
     os_fd_close(sock);
     return -1;
   }

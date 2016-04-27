@@ -13,12 +13,12 @@
 
 EXPORT int os_fd_generic_join_mcast_recv(struct os_fd *sock,
     const struct netaddr *multicast,
-    const struct os_interface_data *oif,
+    const struct os_interface *os_if,
     enum oonf_log_source log_src);
 
 EXPORT int os_fd_generic_join_mcast_send(struct os_fd *sock,
     const struct netaddr *multicast,
-    const struct os_interface_data *oif, bool loop,
+    const struct os_interface *os_if, bool loop,
     enum oonf_log_source log_src);
 
 #endif /* _OS_FD_GENERIC_JOIN_MCAST_H_ */

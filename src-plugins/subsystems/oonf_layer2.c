@@ -50,7 +50,7 @@
 #include "config/cfg_schema.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
+#include "subsystems/os_interface.h"
 
 #include "subsystems/oonf_layer2.h"
 
@@ -67,7 +67,7 @@ static void _neigh_remove(struct oonf_layer2_neigh *l2neigh);
 /* subsystem definition */
 static const char *_dependencies[] = {
   OONF_CLASS_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
 };
 
 static struct oonf_subsystem _oonf_layer2_subsystem = {
@@ -224,7 +224,7 @@ oonf_layer2_net_add(const char *ifname) {
 
   /* initialize interface listener */
   l2net->if_listener.name = l2net->name;
-  oonf_interface_add_listener(&l2net->if_listener);
+  os_interface_add(&l2net->if_listener);
 
   oonf_class_event(&_l2network_class, l2net, OONF_OBJECT_ADDED);
 
@@ -628,7 +628,7 @@ _net_remove(struct oonf_layer2_net *l2net) {
   oonf_class_event(&_l2network_class, l2net, OONF_OBJECT_REMOVED);
 
   /* remove interface listener */
-  oonf_interface_remove_listener(&l2net->if_listener);
+  os_interface_remove(&l2net->if_listener);
 
   /* free addr */
   avl_remove(&_oonf_layer2_net_tree, &l2net->_node);

@@ -210,7 +210,7 @@ dlep_router_remove_interface(struct dlep_router_if *interface) {
 void
 dlep_router_apply_interface_settings(struct dlep_router_if *interf) {
   struct dlep_extension *ext;
-  struct os_interface_data *ifdata;
+  struct os_interface *os_if;
   const struct netaddr *result;
   union netaddr_socket local, remote;
 #ifdef OONF_LOG_DEBUG_INFO
@@ -222,18 +222,18 @@ dlep_router_apply_interface_settings(struct dlep_router_if *interf) {
   _cleanup_interface(interf);
 
   if (!netaddr_is_unspec(&interf->connect_to_addr)) {
-    ifdata = &interf->interf.session.l2_listener.interface->data;
+    os_if = interf->interf.session.l2_listener.data;
 
     OONF_DEBUG(LOG_DLEP_ROUTER, "Connect directly to [%s]:%d",
         netaddr_to_string(&nbuf, &interf->connect_to_addr),
         interf->connect_to_port);
 
-    result = oonf_interface_get_prefix_from_dst(&interf->connect_to_addr, ifdata);
+    result = os_interface_get_prefix_from_dst(&interf->connect_to_addr, os_if);
     if (result) {
       /* initialize local and remote socket */
-      netaddr_socket_init(&local, result, 0, ifdata->index);
+      netaddr_socket_init(&local, result, 0, os_if->index);
       netaddr_socket_init(&remote,
-          &interf->connect_to_addr, interf->connect_to_port, ifdata->index);
+          &interf->connect_to_addr, interf->connect_to_port, os_if->index);
 
       dlep_router_add_session(interf, &local, &remote);
     }

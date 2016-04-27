@@ -102,6 +102,7 @@ _cleanup(void) {
 
 /**
  * Open a new virtual interface
+ * @param sock os socket
  * @param vif pointer to virtual interface object
  * @return -1 if an error happened, 0 otherwise
  */

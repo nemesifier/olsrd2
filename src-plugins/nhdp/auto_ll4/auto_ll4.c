@@ -55,7 +55,6 @@
 #include "core/oonf_subsystem.h"
 #include "core/os_core.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_timer.h"
 #include "subsystems/os_interface.h"
 
@@ -88,7 +87,7 @@ struct _nhdp_if_autoll4 {
   bool plugin_generated;
 
   /*! data structure for setting and resetting auto-configured address */
-  struct os_interface_address os_addr;
+  struct os_interface_ip_change os_addr;
 
   /*! currently configured address */
   struct netaddr auto_ll4_addr;
@@ -101,10 +100,10 @@ static void _cleanup(void);
 
 static void _cb_add_nhdp_interface(void *);
 static void _cb_remove_nhdp_interface(void *);
-static void _cb_address_finished(struct os_interface_address *, int);
+static void _cb_address_finished(struct os_interface_ip_change *, int);
 static void _cb_update_timer(struct oonf_timer_instance *);
 static int _get_current_if_ipv4_addresscount(
-    struct os_interface_data *ifdata,
+    struct os_interface *os_if,
     struct netaddr *ll4_addr, struct netaddr *current_ll4);
 static void _generate_default_address(
     struct _nhdp_if_autoll4 *auto_ll4, const struct netaddr *ipv6_ll);
@@ -140,7 +139,6 @@ static struct cfg_schema_section _interface_section = {
 static const char *_dependencies[] = {
   OONF_CLASS_SUBSYSTEM,
   OONF_TIMER_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_OS_INTERFACE_SUBSYSTEM,
   OONF_NHDP_SUBSYSTEM,
 };
@@ -235,6 +233,8 @@ _initiate_shutdown(void) {
 
   /* cleanup plugin specific data for interfaces that still exist */
   avl_for_each_element(nhdp_interface_get_tree(), nhdp_if, _node) {
+    OONF_DEBUG(LOG_AUTO_LL4, "initiate cleanup if: %s",
+        nhdp_interface_get_if_listener(nhdp_if)->data->name);
     _cb_remove_nhdp_interface(nhdp_if);
   }
   oonf_class_extension_remove(&_nhdp_if_extenstion);
@@ -266,7 +266,7 @@ _cb_add_nhdp_interface(void *ptr) {
 
   /* initialize static part of routing data */
   auto_ll4->os_addr.cb_finished = _cb_address_finished;
-  auto_ll4->os_addr.if_index = nhdp_interface_get_coreif(nhdp_if)->data.index;
+  auto_ll4->os_addr.if_index = nhdp_interface_get_if_listener(nhdp_if)->data->index;
   auto_ll4->os_addr.scope = OS_ADDR_SCOPE_LINK;
 
 
@@ -305,7 +305,7 @@ _cb_remove_nhdp_interface(void *ptr) {
  * @param error 0 if address was set, otherwise an error happened
  */
 static void
-_cb_address_finished(struct os_interface_address *os_addr, int error) {
+_cb_address_finished(struct os_interface_ip_change *os_addr, int error) {
   struct _nhdp_if_autoll4 *auto_ll4;
 #ifdef OONF_LOG_DEBUG_INFO
   struct netaddr_str nbuf;
@@ -420,7 +420,7 @@ _cb_2hop_change(void *ptr) {
 static void
 _cb_update_timer(struct oonf_timer_instance *ptr) {
   struct nhdp_interface *nhdp_if;
-  struct os_interface_data *ifdata;
+  struct os_interface *os_if;
   struct _nhdp_if_autoll4 *auto_ll4;
   struct netaddr current_ll4;
   int count;
@@ -434,17 +434,17 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
   nhdp_if = auto_ll4->nhdp_if;
 
   /* get pointer to interface data */
-  ifdata = &(nhdp_interface_get_coreif(nhdp_if)->data);
+  os_if = nhdp_interface_get_if_listener(nhdp_if)->data;
 
   /* ignore loopback */
-  if (ifdata->loopback || !ifdata->up) {
+  if (os_if->flags.loopback || !os_if->flags.up) {
     OONF_DEBUG(LOG_AUTO_LL4, "Ignore interface %s: its loopback or down",
-        ifdata->name);
+        os_if->name);
     return;
   }
 
   /* query current interface status */
-  count = _get_current_if_ipv4_addresscount(ifdata, &current_ll4, &auto_ll4->auto_ll4_addr);
+  count = _get_current_if_ipv4_addresscount(os_if, &current_ll4, &auto_ll4->auto_ll4_addr);
 
   if (!oonf_rfc5444_is_interface_active(nhdp_if->rfc5444_if.interface, AF_INET6)) {
     if (auto_ll4->plugin_generated) {
@@ -454,7 +454,7 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
           "Remove LL4 address, interface is not using NHDP on IPv6");
     }
     OONF_DEBUG(LOG_AUTO_LL4,
-        "Done (interface %s is not using NHDP on IPv6)", ifdata->name);
+        "Done (interface %s is not using NHDP on IPv6)", os_if->name);
     return;
   }
 
@@ -465,7 +465,7 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
       _commit_address(auto_ll4, &current_ll4, false);
       OONF_DEBUG(LOG_AUTO_LL4, "Remove LL4, user has selected his own address");
     }
-    OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s is not active)", ifdata->name);
+    OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s is not active)", os_if->name);
     return;
   }
 
@@ -476,14 +476,14 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
       _commit_address(auto_ll4, &current_ll4, false);
       OONF_DEBUG(LOG_AUTO_LL4, "Remove LL4, user has selected his own address");
     }
-    OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s has additional addresses)", ifdata->name);
+    OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s has additional addresses)", os_if->name);
     return;
   }
 
   if (count == 1) {
     if (netaddr_get_address_family(&current_ll4) == AF_UNSPEC) {
       /* do nothing, user set a non-LL interface IP */
-      OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s has non-ll ipv4)", ifdata->name);
+      OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s has non-ll ipv4)", os_if->name);
       return;
     }
 
@@ -493,7 +493,7 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
 
   if (netaddr_get_address_family(&auto_ll4->auto_ll4_addr) == AF_UNSPEC) {
     /* try our default IP first */
-    _generate_default_address(auto_ll4, ifdata->linklocal_v6_ptr);
+    _generate_default_address(auto_ll4, os_if->if_linklocal_v6);
   }
 
   while (_nhdp_if_has_collision(nhdp_if, &auto_ll4->auto_ll4_addr)) {
@@ -510,7 +510,7 @@ _cb_update_timer(struct oonf_timer_instance *ptr) {
   if (netaddr_cmp(&auto_ll4->auto_ll4_addr, &current_ll4) == 0) {
     /* nothing to do */
     OONF_DEBUG(LOG_AUTO_LL4, "Done (interface %s already has ll %s)",
-        ifdata->name, netaddr_to_string(&nbuf, &current_ll4));
+        os_if->name, netaddr_to_string(&nbuf, &current_ll4));
     return;
   }
 
@@ -568,12 +568,11 @@ _generate_default_address(struct _nhdp_if_autoll4 *auto_ll4, const struct netadd
  * @return number of IPv4 addresses on interface
  */
 static int
-_get_current_if_ipv4_addresscount(struct os_interface_data *ifdata,
+_get_current_if_ipv4_addresscount(struct os_interface *os_if,
     struct netaddr *ll4_addr, struct netaddr *current_ll4) {
-  struct netaddr *ifaddr;
+  struct os_interface_ip *ip;
   bool match;
   int count;
-  size_t i;
 #ifdef OONF_LOG_DEBUG_INFO
   struct netaddr_str nbuf;
 #endif
@@ -583,22 +582,20 @@ _get_current_if_ipv4_addresscount(struct os_interface_data *ifdata,
   netaddr_invalidate(ll4_addr);
   match = false;
 
-  for (i=0; i<ifdata->addrcount; i++) {
-    /* look through interface IPs */
-    ifaddr = &ifdata->addresses[i];
-
+  avl_for_each_element(&os_if->addresses, ip, _node) {
     OONF_DEBUG(LOG_AUTO_LL4, "Interface %s has address %s",
-        ifdata->name, netaddr_to_string(&nbuf, ifaddr));
+        os_if->name, netaddr_to_string(&nbuf, &ip->address));
 
-    if (netaddr_get_address_family(ifaddr) == AF_INET) {
+    if (netaddr_get_address_family(&ip->address) == AF_INET) {
       /* count IPv4 addresses */
       count++;
 
       /* copy one IPv4 link-local address, if possible the current one */
-      if (!match && netaddr_is_in_subnet(&NETADDR_IPV4_LINKLOCAL, ifaddr)) {
-        memcpy(ll4_addr, &ifdata->addresses[i], sizeof(*ll4_addr));
+      if (!match
+          && netaddr_is_in_subnet(&NETADDR_IPV4_LINKLOCAL, &ip->address)) {
+        memcpy(ll4_addr, &ip->address, sizeof(*ll4_addr));
 
-        if (netaddr_cmp(ifaddr, current_ll4) == 0) {
+        if (netaddr_cmp(&ip->address, current_ll4) == 0) {
           match = true;
         }
       }

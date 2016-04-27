@@ -514,8 +514,7 @@ _get_median_rx_linkspeed(struct link_datff_data *ldata) {
  */
 static int
 _get_scaled_rx_linkspeed(struct nhdp_link *lnk) {
-  // const struct oonf_linkconfig_data *linkdata;
-  struct os_interface_data *ifdata;
+  struct os_interface *os_if;
   const struct oonf_layer2_data *l2data;
   int rate;
 
@@ -525,13 +524,10 @@ _get_scaled_rx_linkspeed(struct nhdp_link *lnk) {
   }
 
   /* get local interface data  */
-  ifdata = oonf_interface_get_data(nhdp_interface_get_name(lnk->local_if), NULL);
-  if (!ifdata) {
-    return 1;
-  }
+  os_if = nhdp_interface_get_if_listener(lnk->local_if)->data;
 
   l2data = oonf_layer2_neigh_query(
-      ifdata->name, &lnk->remote_mac, OONF_LAYER2_NEIGH_RX_BITRATE);
+      os_if->name, &lnk->remote_mac, OONF_LAYER2_NEIGH_RX_BITRATE);
   if (!l2data) {
     return 1;
   }

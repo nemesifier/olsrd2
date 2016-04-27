@@ -43,57 +43,49 @@
  * @file
  */
 
-#ifndef OS_INTERFACE_DATA_H_
-#define OS_INTERFACE_DATA_H_
+#ifndef OS_INTERFACE_LINUX_INTERNAL_H_
+#define OS_INTERFACE_LINUX_INTERNAL_H_
+
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
 
 #include "common/common_types.h"
-#include "common/netaddr.h"
+#include "subsystems/os_interface.h"
 
 /**
- * Representation of interface knowledge of the operation system
+ * define scope of address on interface
  */
-struct os_interface_data {
-  /*! IPv4 Interface addresses with mesh-wide scope (at least) */
-  const struct netaddr *if_v4;
-
-  /*! IPv6 Interface addresses with mesh-wide scope (at least) */
-  const struct netaddr *if_v6;
-
-  /*! IPv6 Interface address with linklocal scope */
-  const struct netaddr *linklocal_v6_ptr;
-
-  /*! mac address of interface */
-  struct netaddr mac;
-
-  /*! list of all addresses of the interface */
-  struct netaddr *addresses;
-
-  /*! number of addresses of the interface */
-  size_t addrcount;
-
-  /*! list of all prefixes of the interface */
-  struct netaddr *prefixes;
-
-  /*! number of prefixes of the interface */
-  size_t prefixcount;
-
-  /*! interface name */
-  char name[IF_NAMESIZE];
-
-  /*! interface index */
-  unsigned index;
-
-  /**
-   * interface index of base interface (for vlan),
-   * same for normal interface
-   */
-  unsigned base_index;
-
-  /*! true if the interface exists and is up */
-  bool up;
-
-  /*! true if this is a loopback interface */
-  bool loopback;
+enum os_addr_scope {
+  /* linklocal scope */
+  OS_ADDR_SCOPE_LINK = RT_SCOPE_LINK,
+  /*! global scope */
+  OS_ADDR_SCOPE_GLOBAL = RT_SCOPE_UNIVERSE,
 };
 
-#endif /* OS_INTERFACE_DATA_H_ */
+/**
+ * linux specifc data for changing an interface address
+ */
+struct os_interface_address_change_internal {
+  /*! hook into list of IP address change handlers */
+  struct list_entity _node;
+
+  /*! netlink sequence number of command sent to the kernel */
+  uint32_t nl_seq;
+};
+
+struct os_interface_internal {
+  /**
+   * usage counter to keep track of the number of users on
+   * this interface who want to send mesh traffic
+   */
+  uint32_t mesh_counter;
+
+  /**
+   * used to store internal state of interfaces before
+   * configuring them for manet data forwarding.
+   * Only used by os_specific code.
+   */
+  uint32_t _original_state;
+};
+
+#endif /* OS_INTERFACE_LINUX_INTERNAL_H_ */

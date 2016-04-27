@@ -48,8 +48,8 @@
 #include "core/oonf_logging.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_rfc5444.h"
+#include "subsystems/os_interface.h"
 #include "nhdp/nhdp_hysteresis.h"
 #include "nhdp/nhdp_interfaces.h"
 #include "nhdp/nhdp_domain.h"
@@ -169,9 +169,9 @@ static struct cfg_schema_section _domain_section = {
 static const char *_dependencies[] = {
   OONF_CLOCK_SUBSYSTEM,
   OONF_CLASS_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_RFC5444_SUBSYSTEM,
   OONF_TIMER_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
 };
 static struct oonf_subsystem nhdp_subsystem = {
   .name = OONF_NHDP_SUBSYSTEM,

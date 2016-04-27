@@ -496,7 +496,7 @@ _radio_write_peer_offer(
   struct netaddr local_addr;
 
   radio_if = dlep_radio_get_by_layer2_if(
-      session->l2_listener.interface->data.name);
+      session->l2_listener.data->name);
   if (!radio_if || &radio_if->interf.session != session) {
     /* unknown type of session, ignore */
     return 0;

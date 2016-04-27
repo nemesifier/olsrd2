@@ -51,7 +51,6 @@
 #include <net/if_arp.h>
 #include <netinet/ip.h>
 #include <linux/if_tunnel.h>
-#include <linux/ip6_tunnel.h>
 #include <errno.h>
 
 #include "common/common_types.h"
@@ -65,6 +64,28 @@
 /* Definitions */
 #define LOG_OS_TUNNEL _oonf_os_tunnel_subsystem.logging
 
+/*
+ * private copy of ip6_tnl_parm2 of linux kernel to be backward compatible
+ * with older kernels
+ */
+struct my_ip6_tnl_parm2 {
+  char name[IFNAMSIZ];
+  int link;
+  uint8_t proto;
+  uint8_t encap_limit;
+  uint8_t hop_limit;
+  uint32_t flowinfo;
+  uint32_t flags;
+  struct in6_addr laddr;
+  struct in6_addr raddr;
+
+  uint16_t      i_flags;
+  uint16_t      o_flags;
+  uint32_t      i_key;
+  uint32_t      o_key;
+};
+
+/* prototypes */
 static int _init(void);
 static void _cleanup(void);
 
@@ -219,7 +240,7 @@ _handle_ipv4_tunnel(struct os_tunnel *tunnel, bool add) {
  */
 static int
 _handle_ipv6_tunnel(struct os_tunnel *tunnel, bool add) {
-  struct ip6_tnl_parm2 p;
+  struct my_ip6_tnl_parm2 p;
   struct ifreq ifr;
   int err;
   struct netaddr_str nbuf1, nbuf2;

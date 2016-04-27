@@ -49,7 +49,7 @@
 #include "common/avl.h"
 #include "common/common_types.h"
 #include "core/oonf_subsystem.h"
-#include "subsystems/oonf_interface.h"
+#include "subsystems/os_interface.h"
 
 /*! subsystem identifier */
 #define OONF_LAYER2_SUBSYSTEM "layer2"
@@ -201,7 +201,7 @@ struct oonf_layer2_net {
   enum oonf_layer2_network_type if_type;
 
   /*! interface listener to keep track of events and local mac address */
-  struct oonf_interface_listener if_listener;
+  struct os_interface_listener if_listener;
 
   /*! tree of remote neighbors */
   struct avl_tree neighbors;

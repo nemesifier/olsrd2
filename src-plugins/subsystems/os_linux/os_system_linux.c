@@ -390,7 +390,7 @@ int
 os_system_linux_netlink_send(struct os_system_netlink *nl,
     struct nlmsghdr *nl_hdr) {
   _seq_used = (_seq_used + 1) & INT32_MAX;
-  OONF_INFO(nl->used_by->logging, "Prepare to send netlink '%s' message %u (%u bytes)",
+  OONF_DEBUG(nl->used_by->logging, "Prepare to send netlink '%s' message %u (%u bytes)",
       nl->name, _seq_used, nl_hdr->nlmsg_len);
 
   nl_hdr->nlmsg_seq = _seq_used;
@@ -560,7 +560,7 @@ _flush_netlink_buffer(struct os_system_netlink *nl) {
   else {
     nl->msg_in_transit += buffer->messages;
 
-    OONF_INFO(nl->used_by->logging,
+    OONF_DEBUG(nl->used_by->logging,
         "netlink %s: Sent %u bytes (%u messages in transit)",
         nl->name, buffer->total, nl->msg_in_transit);
 
@@ -670,7 +670,7 @@ netlink_rcv_retry:
     goto netlink_rcv_retry;
   }
 
-  OONF_INFO(nl->used_by->logging, "Got netlink '%s' message of %"
+  OONF_DEBUG(nl->used_by->logging, "Got netlink '%s' message of %"
       PRINTF_SSIZE_T_SPECIFIER" bytes", nl->name, ret);
   OONF_DEBUG_HEX(nl->used_by->logging, nl->in, ret,
       "Content of netlink '%s' message:", nl->name);
@@ -680,7 +680,7 @@ netlink_rcv_retry:
   /* loop through netlink headers */
   len = (size_t) ret;
   for (nh = nl->in; NLMSG_OK (nh, len); nh = NLMSG_NEXT (nh, len)) {
-    OONF_INFO(nl->used_by->logging,
+    OONF_DEBUG(nl->used_by->logging,
         "Netlink '%s' message received: type %d seq %u\n",
         nl->name, nh->nlmsg_type, nh->nlmsg_seq);
 
@@ -743,7 +743,7 @@ _handle_nl_err(struct os_system_netlink *nl, struct nlmsghdr *nh) {
 
   err = (struct nlmsgerr *) NLMSG_DATA(nh);
 
-  OONF_INFO(nl->used_by->logging,
+  OONF_DEBUG(nl->used_by->logging,
       "Received netlink '%s' seq %u feedback (%u bytes): %s (%d)",
       nl->name, nh->nlmsg_seq, nh->nlmsg_len, strerror(-err->error), -err->error);
 

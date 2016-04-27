@@ -54,9 +54,9 @@
 #include "core/oonf_cfg.h"
 #include "core/oonf_logging.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_rfc5444.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 
 #include "nhdp/nhdp.h"
 #include "nhdp/nhdp_db.h"
@@ -226,8 +226,8 @@ nhdp_interface_add(const char *name) {
     }
 
     /* allocate core interface */
-    interf->core_if_listener.name = interf->rfc5444_if.interface->name;
-    oonf_interface_add_listener(&interf->core_if_listener);
+    interf->os_if_listener.name = interf->rfc5444_if.interface->name;
+    os_interface_add(&interf->os_if_listener);
 
     /* initialize timers */
     interf->_hello_timer.class = &_interface_hello_timer;
@@ -310,7 +310,7 @@ nhdp_interface_remove(struct nhdp_interface *interf) {
   avl_remove(&_interface_tree, &interf->_node);
 
   /* now clean up the rest */
-  oonf_interface_remove_listener(&interf->core_if_listener);
+  os_interface_remove(&interf->os_if_listener);
   oonf_rfc5444_remove_interface(interf->rfc5444_if.interface, &interf->rfc5444_if);
   oonf_class_free(&_interface_info, interf);
 }
@@ -489,11 +489,11 @@ _cb_interface_event(struct oonf_rfc5444_interface_listener *ifl,
     bool changed __attribute__((unused))) {
   struct nhdp_interface *interf;
   struct nhdp_interface_addr *addr, *addr_it;
-  struct os_interface *oonf_interf;
+  struct os_interface_listener *if_listener;
   struct nhdp_link *nhdp_link, *nhdp_link_it;
+  struct os_interface_ip *os_ip;
   bool has_active_addr;
   bool ipv4, ipv6;
-  size_t i;
 #ifdef OONF_LOG_DEBUG_INFO
   struct netaddr_str nbuf;
 #endif
@@ -509,33 +509,29 @@ _cb_interface_event(struct oonf_rfc5444_interface_listener *ifl,
 
   has_active_addr = false;
 
-  oonf_interf = oonf_rfc5444_get_core_interface(ifl->interface);
-  if (oonf_interf != NULL && oonf_interf->data.up) {
+  if_listener = oonf_rfc5444_get_core_if_listener(ifl->interface);
+  if (if_listener != NULL && if_listener->data && if_listener->data->flags.up) {
     ipv4 = oonf_rfc5444_is_target_active(interf->rfc5444_if.interface->multicast4);
     ipv6 = oonf_rfc5444_is_target_active(interf->rfc5444_if.interface->multicast6);
 
-    if (oonf_interf->data.up) {
-      /* get all socket addresses that are matching the filter */
-      for (i = 0; i<oonf_interf->data.addrcount; i++) {
-        struct netaddr *ifaddr = &oonf_interf->data.addresses[i];
+    /* get all socket addresses that are matching the filter */
+    avl_for_each_element(&if_listener->data->addresses, os_ip, _node) {
+      OONF_DEBUG(LOG_NHDP, "Found interface address %s",
+          netaddr_to_string(&nbuf, &os_ip->address));
 
-        OONF_DEBUG(LOG_NHDP, "Found interface address %s",
-            netaddr_to_string(&nbuf, ifaddr));
+      if (netaddr_get_address_family(&os_ip->address) == AF_INET && !ipv4) {
+        /* ignore IPv4 addresses if ipv4 socket is not up*/
+        continue;
+      }
+      if (netaddr_get_address_family(&os_ip->address) == AF_INET6 && !ipv6) {
+        /* ignore IPv6 addresses if ipv6 socket is not up*/
+        continue;
+      }
 
-        if (netaddr_get_address_family(ifaddr) == AF_INET && !ipv4) {
-          /* ignore IPv4 addresses if ipv4 socket is not up*/
-          continue;
-        }
-        if (netaddr_get_address_family(ifaddr) == AF_INET6 && !ipv6) {
-          /* ignore IPv6 addresses if ipv6 socket is not up*/
-          continue;
-        }
-
-        /* check if IP address fits to ACL */
-        if (netaddr_acl_check_accept(&interf->ifaddr_filter, ifaddr)) {
-          _addr_add(interf, ifaddr);
-          has_active_addr = true;
-        }
+      /* check if IP address fits to ACL */
+      if (netaddr_acl_check_accept(&interf->ifaddr_filter, &os_ip->address)) {
+        _addr_add(interf, &os_ip->address);
+        has_active_addr = true;
       }
     }
   }

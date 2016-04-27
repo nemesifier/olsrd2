@@ -6,7 +6,6 @@ SET(SINGLE_FILE_NAMES    class
                          clock
                          duplicate_set
                          http
-                         interface
                          layer2
                          packet_socket
                          socket
@@ -56,9 +55,11 @@ IF(LINUX)
     SET(OS_CLOCK_INCLUDE     ${OS_CLOCK_INCLUDE}
                              os_linus/os_clock_linux.h)
     
-    SET(OS_INTERFACE_SOURCE  os_linux/os_interface_linux.c)
+    SET(OS_INTERFACE_SOURCE  os_linux/os_interface_linux.c
+                             os_generic/os_interface_generic.c)
     SET(OS_INTERFACE_INCLUDE ${OS_INTERFACE_INCLUDE}
-                             os_linux/os_interface_linux.h)
+                             os_linux/os_interface_linux.h
+                             os_generic/os_interface_generic.h)
 
     SET(OS_ROUTING_SOURCE    os_generic/os_routing_generic_rt_to_string.c
                              os_generic/os_routing_generic_rtkey_avlcomp.c

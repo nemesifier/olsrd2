@@ -929,7 +929,7 @@ _recalculate_neighbor_metric(
 
   if (neighdata->best_link != NULL) {
     neighdata->best_link_ifindex =
-        nhdp_interface_get_coreif(neighdata->best_link->local_if)->data.index;
+        nhdp_interface_get_if_listener(neighdata->best_link->local_if)->data->index;
   }
 
   if (memcmp(&oldmetric, &neighdata->metric, sizeof(oldmetric)) != 0) {

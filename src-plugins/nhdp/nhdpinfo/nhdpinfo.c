@@ -532,10 +532,10 @@ _cb_nhdpinfo_help(struct oonf_telnet_data *con) {
  */
 static void
 _initialize_interface_values(struct nhdp_interface *nhdp_if) {
-  struct os_interface *core_if;
+  struct os_interface_listener *if_listener;
   struct netaddr temp_addr;
 
-  core_if = nhdp_interface_get_coreif(nhdp_if);
+  if_listener = nhdp_interface_get_if_listener(nhdp_if);
 
   /* fill output buffers for template engine */
   strscpy(_value_if, nhdp_interface_get_name(nhdp_if), sizeof(_value_if));
@@ -548,7 +548,7 @@ _initialize_interface_values(struct nhdp_interface *nhdp_if) {
       &nhdp_if->rfc5444_if.interface->_socket.socket_v6.local_socket);
   netaddr_to_string(&_value_if_bindto_v6, &temp_addr);
 
-  netaddr_to_string(&_value_if_mac, &core_if->data.mac);
+  netaddr_to_string(&_value_if_mac, &if_listener->data->mac);
 
   strscpy(_value_if_flooding_v4,
       json_getbool(nhdp_if->use_ipv4_for_flooding), TEMPLATE_JSON_BOOL_LENGTH);

@@ -30,7 +30,6 @@ IF (NOT OONF_STATIC_PLUGINS)
     set (OONF_STATIC_PLUGINS class
                              clock
                              duplicate_set
-                             interface
                              layer2
                              packet_socket
                              rfc5444

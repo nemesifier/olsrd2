@@ -885,8 +885,14 @@ _handle_nhdp_routes(struct nhdp_domain *domain) {
       os_routing_init_sourcespec_prefix(&ssprefix, &naddr->neigh_addr);
 
       /* update routing entry */
-      _update_routing_entry(domain, &ssprefix,
-          neigh, 0, neighcost, 1, true, olsrv2_originator_get(family));
+      if (olsrv2_originator_get(family)) {
+        _update_routing_entry(domain, &ssprefix,
+            neigh, 0, neighcost, 1, true, olsrv2_originator_get(family));
+      }
+      else {
+        _update_routing_entry(domain, &ssprefix,
+            neigh, 0, neighcost, 1, true, &NETADDR_UNSPEC);
+      }
     }
 
     list_for_each_element(&neigh->_links, lnk, _neigh_node) {

@@ -139,7 +139,7 @@ dlep_session_add(struct dlep_session *session, const char *l2_ifname,
   session->l2_listener.name = l2_ifname;
 
   /* get interface listener to lock interface */
-  if ((oonf_interface_add_listener(&session->l2_listener))) {
+  if (!os_interface_add(&session->l2_listener)) {
     OONF_WARN(session->log_source,
         "Cannot activate interface listener for %s", l2_ifname);
     dlep_session_remove(session);
@@ -202,7 +202,7 @@ dlep_session_remove(struct dlep_session *session) {
       session->l2_listener.name,
       netaddr_socket_to_string(&nbuf, &session->remote_socket));
 
-  oonf_interface_remove_listener(&session->l2_listener);
+  os_interface_remove(&session->l2_listener);
 
   parser = &session->parser;
   avl_for_each_element_safe(&parser->allowed_tlvs, tlv, _node, tlv_it) {

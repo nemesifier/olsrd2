@@ -70,9 +70,9 @@
 #include "core/oonf_logging.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_layer2.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 #include "subsystems/os_system.h"
 
 #include "nl80211_listener/genl_get_family.h"
@@ -224,9 +224,9 @@ static struct _nl80211_config _config;
 /* plugin declaration */
 static const char *_dependencies[] = {
   OONF_CLASS_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_LAYER2_SUBSYSTEM,
   OONF_TIMER_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
   OONF_OS_SYSTEM_SUBSYSTEM,
 };
 
@@ -449,7 +449,7 @@ _nl80211_if_add(const char *name) {
 
   /* initialize interface listener */
   interf->if_listener.name = interf->name;
-  if (oonf_interface_add_listener(&interf->if_listener)) {
+  if (!os_interface_add(&interf->if_listener)) {
     oonf_layer2_net_remove(interf->l2net, _layer2_origin);
     oonf_class_free(&_nl80211_if_class, interf);
     return NULL;
@@ -470,7 +470,7 @@ _nl80211_if_add(const char *name) {
 static void
 _nl80211_if_remove(struct nl80211_if *interf) {
   avl_remove(&_nl80211_if_tree, &interf->_node);
-  oonf_interface_remove_listener(&interf->if_listener);
+  os_interface_remove(&interf->if_listener);
   oonf_class_free(&_nl80211_if_class, interf);
 }
 

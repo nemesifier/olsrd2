@@ -121,7 +121,15 @@ static void _print_json_netaddr(struct json_session *session,
 /* telnet command of this plugin */
 static struct oonf_telnet_command _telnet_commands[] = {
     TELNET_CMD(OONF_NETJSONINFO_SUBSYSTEM, _cb_netjsoninfo,
-        ""),
+        "The command has three main commands (route, graph, domain) and a"
+        " 'filter' prefix for route/graph. You can use any combination of the"
+        " three main commands (space separated) to generate a NetworkCollection"
+        " with the information of the main commands for all known domains.\n"
+        "> route graph\n"
+        "The filter prefix use an id (which can be queried by 'domain') to output"
+        " a single domain of route/graph without the NetworkCollection object"
+        " around it. The domain_id's are ipv4_<domain_number> and ipv6_<domain_number>.\n"
+        "> filter route ipv4_0\n"),
 };
 
 /* plugin declaration */

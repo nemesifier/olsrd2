@@ -51,66 +51,72 @@
 
 #include "common/common_types.h"
 #include "subsystems/os_interface.h"
+#include "subsystems/os_generic/os_interface_generic.h"
 
-/**
- * define scope of address on interface
- */
-enum os_addr_scope {
-  /* linklocal scope */
-  OS_ADDR_SCOPE_LINK = RT_SCOPE_LINK,
-  /*! global scope */
-  OS_ADDR_SCOPE_GLOBAL = RT_SCOPE_UNIVERSE,
+enum {
+  /*! interval until an interface change trigger will be activated again */
+  OS_INTERFACE_CHANGE_TRIGGER_INTERVAL = 200,
 };
 
-/**
- * linux specifc data for changing an interface address
- */
-struct os_interface_address_internal {
-  /*! hook into list of IP address change handlers */
-  struct list_entity _node;
+#define OS_INTERFACE_ANY "any"
 
-  /*! netlink sequence number of command sent to the kernel */
-  uint32_t nl_seq;
-};
+EXPORT struct os_interface *os_interface_linux_add(struct os_interface_listener *);
+EXPORT void os_interface_linux_remove(struct os_interface_listener *);
+EXPORT struct avl_tree *os_interface_linux_get_tree(void);
 
-EXPORT void os_interface_linux_listener_add(struct os_interface_if_listener *);
-EXPORT void os_interface_linux_listener_remove(struct os_interface_if_listener *);
-EXPORT int os_interface_linux_state_set(const char *dev, bool up);
-EXPORT int os_interface_linux_address_set(struct os_interface_address *addr);
-EXPORT void os_interface_linux_address_interrupt(struct os_interface_address *addr);
-EXPORT int os_interface_linux_mac_set_by_name(const char *, struct netaddr *mac);
+EXPORT void os_interface_linux_trigger_handler(struct os_interface_listener *);
 
-EXPORT int os_interface_linux_update(struct os_interface_data *, const char *);
-EXPORT int os_interface_linux_init_mesh(struct os_interface *);
-EXPORT void os_interface_linux_cleanup_mesh(struct os_interface *);
+EXPORT int os_interface_linux_state_set(struct os_interface *, bool up);
+EXPORT int os_interface_linux_mac_set(struct os_interface *interf, struct netaddr *mac);
+
+EXPORT int os_interface_linux_address_set(struct os_interface_ip_change *addr);
+EXPORT void os_interface_linux_address_interrupt(struct os_interface_ip_change *addr);
 
 /**
- * Add an interface event listener to the operation system
- * @param listener interface listener
+ * Add an interface to the OONF handling
+ * @param interf network interface
+ * @return interface data object
  */
-static INLINE void
-os_interface_listener_add(struct os_interface_if_listener *l) {
-  os_interface_linux_listener_add(l);
+static INLINE struct os_interface *
+os_interface_add(struct os_interface_listener *interf) {
+  return os_interface_linux_add(interf);
 }
 
 /**
- * Remove an interface event listener to the operation system
- * @param listener interface listener
+ * Remove an interface from the OONF handling
+ * @param interf network interface
  */
 static INLINE void
-os_interface_listener_remove(struct os_interface_if_listener *l) {
-  os_interface_linux_listener_remove(l);
+os_interface_remove(struct os_interface_listener *interf) {
+  os_interface_linux_remove(interf);
+}
+
+/**
+ * @return tree of network interfaces
+ */
+static INLINE struct avl_tree *
+os_interface_get_tree(void) {
+  return os_interface_linux_get_tree();
+}
+
+/**
+ * Trigger an interface change handler
+ * @param interf network interface
+ */
+static INLINE void
+os_interface_trigger_handler(struct os_interface_listener *interf) {
+  os_interface_linux_trigger_handler(interf);
 }
 
 /**
  * Set interface up or down
- * @param dev pointer to name of interface
+ * @param os_if network interface
  * @param up true if interface should be up, false if down
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
-os_interface_state_set(const char *dev, bool up) {
-  return os_interface_linux_state_set(dev, up);
+os_interface_state_set(struct os_interface *os_if, bool up) {
+  return os_interface_linux_state_set(os_if, up);
 }
 
 /**
@@ -120,7 +126,7 @@ os_interface_state_set(const char *dev, bool up) {
  *   0 otherwise
  */
 static INLINE int
-os_interface_address_set(struct os_interface_address *addr) {
+os_interface_address_set(struct os_interface_ip_change *addr) {
   return os_interface_linux_address_set(addr);
 }
 
@@ -129,61 +135,41 @@ os_interface_address_set(struct os_interface_address *addr) {
  * @param addr interface address change request
  */
 static INLINE void
-os_interface_address_interrupt(struct os_interface_address *addr) {
+os_interface_address_interrupt(struct os_interface_ip_change *addr) {
   os_interface_linux_address_interrupt(addr);
 }
 
 /**
- * Set the mac address of an interface
- * @param name name of interface
- * @param mac mac address
- * @return -1 if an error happened, 0 otherwise
- */
-static INLINE int
-os_interface_mac_set_by_name(const char *ifname, struct netaddr *mac) {
-  return os_interface_linux_mac_set_by_name(ifname, mac);
-}
-
-/**
- * Updates the data of an interface.
- * The interface data object will be completely overwritten
- * @param ifdata pointer to an interface data object
- * @param name name of interface
- * @return -1 if an error happened, 0 otherwise
- */
-static INLINE int
-os_interface_update(struct os_interface_data *ifdata, const char *name) {
-  return os_interface_linux_update(ifdata, name);
-}
-
-/**
- * Initialize interface for mesh usage
- * @param interf pointer to interface object
- * @return -1 if an error happened, 0 otherwise
- */
-static INLINE int
-os_interface_init_mesh(struct os_interface *interf) {
-  return os_interface_linux_init_mesh(interf);
-}
-
-/**
- * Cleanup interface after mesh usage
- * @param interf pointer to interface object
- */
-static INLINE void
-os_interface_cleanup_mesh(struct os_interface *interf) {
-  os_interface_linux_cleanup_mesh(interf);
-}
-
-/**
  * Set mac address of interface
- * @param ifdata interface data object
+ * @param os_if interface data object
  * @param mac new mac address
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
-os_interface_mac_set(struct os_interface_data *ifdata, struct netaddr *mac) {
-  return os_interface_linux_mac_set_by_name(ifdata->name, mac);
+os_interface_mac_set(struct os_interface *os_if, struct netaddr *mac) {
+  return os_interface_linux_mac_set(os_if, mac);
+}
+
+static INLINE struct os_interface *
+os_interface_get_data_by_ifindex(unsigned ifindex) {
+  return os_interface_generic_get_data_by_ifindex(ifindex);
+}
+
+static INLINE struct os_interface *
+os_interface_get_data_by_ifbaseindex(unsigned ifindex) {
+  return os_interface_generic_get_data_by_ifbaseindex(ifindex);
+}
+
+static INLINE const struct netaddr *
+os_interface_get_bindaddress(int af_type,
+    struct netaddr_acl *filter, struct os_interface *ifdata) {
+  return os_interface_generic_get_bindaddress(af_type, filter, ifdata);
+}
+
+static INLINE  const struct netaddr *
+os_interface_get_prefix_from_dst(
+    struct netaddr *destination, struct os_interface *ifdata) {
+  return os_interface_generic_get_prefix_from_dst(destination, ifdata);
 }
 
 #endif /* OS_INTERFACE_LINUX_H_ */

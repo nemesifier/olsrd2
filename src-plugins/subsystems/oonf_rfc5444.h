@@ -89,7 +89,7 @@ enum {
 };
 
 /*! Interface name for unicast targets */
-#define RFC5444_UNICAST_INTERFACE OONF_INTERFACE_WILDCARD
+#define RFC5444_UNICAST_INTERFACE OS_INTERFACE_ANY
 
 /*! memory class for rfc5444 protocol */
 #define RFC5444_CLASS_PROTOCOL  "RFC5444 protocol"
@@ -331,9 +331,9 @@ oonf_rfc5444_get_target_from_rfc5444_target(struct rfc5444_writer_target *target
  * @param interf pointer to rfc5444 interface
  * @return pointer to olsr interface
  */
-static INLINE struct os_interface *
-oonf_rfc5444_get_core_interface(struct oonf_rfc5444_interface *interf) {
-  return interf->_socket._if_listener.interface;
+static INLINE struct os_interface_listener *
+oonf_rfc5444_get_core_if_listener(struct oonf_rfc5444_interface *interf) {
+  return &interf->_socket._if_listener;
 }
 
 /**

@@ -54,10 +54,9 @@ struct dlep_writer;
 #include "common/autobuf.h"
 #include "common/netaddr.h"
 #include "subsystems/oonf_layer2.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_stream_socket.h"
 #include "subsystems/oonf_timer.h"
-#include "subsystems/os_interface_data.h"
+#include "subsystems/os_interface.h"
 
 #include "dlep/dlep_extension.h"
 #include "dlep/dlep_iana.h"
@@ -285,7 +284,7 @@ struct dlep_session {
   enum oonf_log_source log_source;
 
   /*! local layer2 data interface */
-  struct oonf_interface_listener l2_listener;
+  struct os_interface_listener l2_listener;
 
   /*! timer to generate discovery/heartbeats */
   struct oonf_timer_instance local_event_timer;

@@ -261,7 +261,7 @@ _router_process_peer_offer(
   struct netaddr addr;
   uint16_t port;
   bool tls;
-  struct os_interface_data *ifdata;
+  struct os_interface *ifdata;
 
   if (session->restrict_signal != DLEP_PEER_OFFER) {
     /* ignore unless we are in discovery mode */
@@ -275,7 +275,7 @@ _router_process_peer_offer(
   result = NULL;
 
   /* remember interface data */
-  ifdata = &session->l2_listener.interface->data;
+  ifdata = session->l2_listener.data;
 
   /* IPv6 offer */
   value = dlep_session_get_tlv_value(session, DLEP_IPV6_CONPOINT_TLV);
@@ -290,7 +290,7 @@ _router_process_peer_offer(
     }
     else if (netaddr_is_in_subnet(&NETADDR_IPV6_LINKLOCAL, &addr)
         || result == NULL) {
-      result = oonf_interface_get_prefix_from_dst(&addr, ifdata);
+      result = os_interface_get_prefix_from_dst(&addr, ifdata);
       if (result) {
         netaddr_socket_init(&remote, &addr, port, ifdata->index);
       }
@@ -309,7 +309,7 @@ _router_process_peer_offer(
       /* TLS not supported at the moment */
     }
     else {
-      result = oonf_interface_get_prefix_from_dst(&addr, ifdata);
+      result = os_interface_get_prefix_from_dst(&addr, ifdata);
       if (result) {
         netaddr_socket_init(&remote, &addr, port, ifdata->index);
       }
@@ -320,7 +320,7 @@ _router_process_peer_offer(
   /* remote address of incoming session */
   if (!result) {
     netaddr_from_socket(&addr, &session->remote_socket);
-    result = oonf_interface_get_prefix_from_dst(&addr, ifdata);
+    result = os_interface_get_prefix_from_dst(&addr, ifdata);
     if (!result) {
       /* no possible way to communicate */
       OONF_DEBUG(session->log_source,

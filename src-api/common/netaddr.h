@@ -163,6 +163,7 @@ EXPORT extern const struct netaddr NETADDR_IPV6_BINDTO_ANY;
 EXPORT extern const struct netaddr NETADDR_IPV6_MULTICAST;
 EXPORT extern const struct netaddr NETADDR_IPV6_LINKLOCAL;
 EXPORT extern const struct netaddr NETADDR_IPV6_ULA;
+EXPORT extern const struct netaddr NETADDR_IPV6_GLOBAL;
 EXPORT extern const struct netaddr NETADDR_IPV6_IPV4COMPATIBLE;
 EXPORT extern const struct netaddr NETADDR_IPV6_IPV4MAPPED;
 EXPORT extern const struct netaddr NETADDR_IPV6_LOOPBACK;

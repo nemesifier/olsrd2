@@ -400,7 +400,7 @@ _cb_query_trigger(void *ptr) {
 static enum rfc5444_result
 _cb_timestamp_tlv(struct rfc5444_reader_tlvblock_context *context __attribute__((unused))) {
   struct oonf_rfc5444_target *target;
-  struct os_interface *core_if;
+  struct os_interface_listener *core_if;
   struct neighbor_node *node;
   uint32_t timestamp, query, response;
   enum rfc5444_result result;
@@ -411,7 +411,7 @@ _cb_timestamp_tlv(struct rfc5444_reader_tlvblock_context *context __attribute__(
 
   struct neighbor_key key;
 
-  core_if = oonf_rfc5444_get_core_interface(_protocol->input_interface);
+  core_if = oonf_rfc5444_get_core_if_listener(_protocol->input_interface);
 
   /* get input-addr/interface combination */
   memset(&key, 0, sizeof(key));
@@ -537,7 +537,7 @@ _cb_timestamp_failed(struct rfc5444_reader_tlvblock_context *context __attribute
 static void
 _cb_addPacketTLVs(struct rfc5444_writer *writer, struct rfc5444_writer_target *rfc5444_target) {
   struct oonf_rfc5444_target *target;
-  struct os_interface *core_if;
+  struct os_interface_listener *core_if;
   struct neighbor_node *node;
   uint32_t query, response;
 #ifdef OONF_LOG_DEBUG_INFO
@@ -550,7 +550,7 @@ _cb_addPacketTLVs(struct rfc5444_writer *writer, struct rfc5444_writer_target *r
   target = oonf_rfc5444_get_target_from_rfc5444_target(rfc5444_target);
 
   /* get core interface */
-  core_if = oonf_rfc5444_get_core_interface(target->interface);
+  core_if = oonf_rfc5444_get_core_if_listener(target->interface);
 
   /* get input-addr/interface combination */
   memset(&key, 0, sizeof(key));

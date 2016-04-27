@@ -6,7 +6,7 @@ include_directories(nhdp)
 include_directories(olsrv2)
 
 # add subdirectories
-add_subdirectory(crypto)
+#add_subdirectory(crypto)
 add_subdirectory(generic)
 add_subdirectory(nhdp)
 add_subdirectory(olsrv2)

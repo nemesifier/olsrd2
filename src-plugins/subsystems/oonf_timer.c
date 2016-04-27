@@ -202,12 +202,6 @@ oonf_timer_start_ext(struct oonf_timer_instance *timer, uint64_t first, uint64_t
   OONF_DEBUG(LOG_TIMER, "TIMER: start timer '%s' firing in %s (%"PRIu64")\n",
       timer->class->name,
       oonf_clock_toClockString(&timebuf1, first), timer->_clock);
-
-  /* fix 'next event' pointers if necessary */
-  if (_scheduling_now) {
-    /* will be fixed at the end of the timer scheduling loop */
-    return;
-  }
 }
 
 /**

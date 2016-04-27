@@ -50,8 +50,8 @@
 #include "common/netaddr_acl.h"
 #include "core/oonf_logging.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 
 #include "nhdp/nhdp.h"
 

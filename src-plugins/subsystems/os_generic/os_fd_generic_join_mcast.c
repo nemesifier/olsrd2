@@ -58,28 +58,28 @@
  * Join a socket into a multicast group
  * @param sock filedescriptor of socket
  * @param multicast multicast-group to join
- * @param oif pointer to outgoing interface data for multicast
+ * @param os_if pointer to outgoing interface data for multicast
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
  */
 int
 os_fd_generic_join_mcast_recv(struct os_fd *sock,
     const struct netaddr *multicast,
-    const struct os_interface_data *oif,
+    const struct os_interface *os_if,
     enum oonf_log_source log_src __attribute__((unused))) {
   struct netaddr_str buf1, buf2;
   struct ip_mreq   v4_mreq;
   struct ipv6_mreq v6_mreq;
   const char *ifname = "*";
 
-  if (oif) {
-    ifname = oif->name;
+  if (os_if) {
+    ifname = os_if->name;
   }
 
   if (netaddr_get_address_family(multicast) == AF_INET) {
     const struct netaddr *src;
 
-    src = oif == NULL ? &NETADDR_IPV4_ANY : oif->if_v4;
+    src = os_if == NULL ? &NETADDR_IPV4_ANY : os_if->if_v4;
 
     OONF_DEBUG(log_src,
         "Socket on interface %s joining receiving multicast %s (src %s)\n",
@@ -101,7 +101,7 @@ os_fd_generic_join_mcast_recv(struct os_fd *sock,
   else {
     int if_index;
 
-    if_index = oif == NULL ? 0 : oif->index;
+    if_index = os_if == NULL ? 0 : os_if->index;
 
     OONF_DEBUG(log_src,
         "Socket on interface %s joining receiving multicast %s (if %d)\n",
@@ -126,7 +126,7 @@ os_fd_generic_join_mcast_recv(struct os_fd *sock,
  * Join a socket into a multicast group
  * @param sock filedescriptor of socket
  * @param multicast multicast ip/port to join
- * @param oif pointer to outgoing interface data for multicast
+ * @param os_if pointer to outgoing interface data for multicast
  * @param loop true if multicast loop should be activated, false otherwise
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
@@ -134,7 +134,7 @@ os_fd_generic_join_mcast_recv(struct os_fd *sock,
 int
 os_fd_generic_join_mcast_send(struct os_fd *sock,
     const struct netaddr *multicast,
-    const struct os_interface_data *oif, bool loop,
+    const struct os_interface *os_if, bool loop,
     enum oonf_log_source log_src __attribute__((unused))) {
   struct netaddr_str buf1, buf2;
   unsigned i;
@@ -142,15 +142,15 @@ os_fd_generic_join_mcast_send(struct os_fd *sock,
   if (netaddr_get_address_family(multicast) == AF_INET) {
     OONF_DEBUG(log_src,
         "Socket on interface %s joining sending multicast %s (src %s)\n",
-        oif->name,
+        os_if->name,
         netaddr_to_string(&buf2, multicast),
-        netaddr_to_string(&buf1, oif->if_v4));
+        netaddr_to_string(&buf1, os_if->if_v4));
 
-    if (setsockopt(sock->fd, IPPROTO_IP, IP_MULTICAST_IF, netaddr_get_binptr(oif->if_v4), 4) < 0) {
+    if (setsockopt(sock->fd, IPPROTO_IP, IP_MULTICAST_IF, netaddr_get_binptr(os_if->if_v4), 4) < 0) {
       OONF_WARN(log_src, "Cannot set multicast %s on interface %s (src %s): %s (%d)\n",
           netaddr_to_string(&buf2, multicast),
-          oif->name,
-          netaddr_to_string(&buf1, oif->if_v4),
+          os_if->name,
+          netaddr_to_string(&buf1, os_if->if_v4),
           strerror(errno), errno);
       return -1;
     }
@@ -165,16 +165,16 @@ os_fd_generic_join_mcast_send(struct os_fd *sock,
   else {
     OONF_DEBUG(log_src,
         "Socket on interface %s (%d) joining sending multicast %s (src %s)\n",
-        oif->name, oif->index,
+        os_if->name, os_if->index,
         netaddr_to_string(&buf2, multicast),
-        netaddr_to_string(&buf1, oif->linklocal_v6_ptr));
+        netaddr_to_string(&buf1, os_if->if_linklocal_v6));
 
     if (setsockopt(sock->fd, IPPROTO_IPV6, IPV6_MULTICAST_IF,
-        &oif->index, sizeof(oif->index)) < 0) {
+        &os_if->index, sizeof(os_if->index)) < 0) {
       OONF_WARN(log_src, "Cannot set multicast %s on interface %s (src %s): %s (%d)\n",
           netaddr_to_string(&buf2, multicast),
-          oif->name,
-          netaddr_to_string(&buf1, oif->linklocal_v6_ptr),
+          os_if->name,
+          netaddr_to_string(&buf1, os_if->if_linklocal_v6),
           strerror(errno), errno);
       return -1;
     }

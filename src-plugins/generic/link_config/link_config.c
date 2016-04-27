@@ -51,8 +51,8 @@
 #include "core/oonf_logging.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_layer2.h"
+#include "subsystems/os_interface.h"
 
 #include "link_config/link_config.h"
 
@@ -103,8 +103,8 @@ static struct cfg_schema_section _link_config_section = {
 /* declare subsystem */
 static const char *_dependencies[] = {
   OONF_CLASS_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_LAYER2_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
 };
 static struct oonf_subsystem _oonf_link_config_subsystem = {
   .name = OONF_LINK_CONFIG_SUBSYSTEM,

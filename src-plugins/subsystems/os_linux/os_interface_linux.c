@@ -68,8 +68,14 @@
 #include <time.h>
 
 #include "common/common_types.h"
+#include "common/avl.h"
+#include "common/avl_comp.h"
 #include "common/string.h"
+#include "core/oonf_cfg.h"
+#include "core/oonf_main.h"
 #include "core/oonf_subsystem.h"
+#include "subsystems/oonf_class.h"
+#include "subsystems/oonf_timer.h"
 #include "subsystems/os_system.h"
 
 #include "subsystems/os_interface.h"
@@ -101,26 +107,35 @@
 /* prototypes */
 static int _init(void);
 static void _cleanup(void);
+static void _early_cfg_init(void);
+
+static int _init_mesh(struct os_interface *os_if);
+static void _cleanup_mesh(struct os_interface *os_if);
+
+static void _query_interface_links(void);
+static void _query_interface_addresses(void);
 
 static void _cb_rtnetlink_message(struct nlmsghdr *hdr);
 static void _cb_rtnetlink_error(uint32_t seq, int error);
 static void _cb_rtnetlink_done(uint32_t seq);
 static void _cb_rtnetlink_timeout(void);
-static void _address_finished(struct os_interface_address *addr, int error);
+static void _cb_query_error(uint32_t seq, int error);
+static void _cb_query_done(uint32_t seq);
+static void _cb_query_timeout(void);
+static void _address_finished(
+    struct os_interface_ip_change *addr, int error);
 
 static void _activate_if_routing(void);
 static void _deactivate_if_routing(void);
 static int _os_linux_writeToFile(const char *file, char *old, char value);
-static unsigned _os_linux_get_base_ifindex(const char *interf);
 
-/* ioctl socket */
-static int _ioctl_fd = -1;
-
-/* list of interface change listeners */
-static struct list_entity _ifchange_listener;
+static void _cb_interface_changed(struct oonf_timer_instance *);
+static int _handle_unused_parameter(const char *arg);
 
 /* subsystem definition */
 static const char *_dependencies[] = {
+  OONF_CLASS_SUBSYSTEM,
+  OONF_TIMER_SUBSYSTEM,
   OONF_OS_SYSTEM_SUBSYSTEM,
 };
 
@@ -130,10 +145,11 @@ static struct oonf_subsystem _oonf_os_interface_subsystem = {
   .dependencies_count = ARRAYSIZE(_dependencies),
   .init = _init,
   .cleanup = _cleanup,
+  .early_cfg_init = _early_cfg_init,
 };
 DECLARE_OONF_PLUGIN(_oonf_os_interface_subsystem);
 
-/* built in rtnetlink receiver */
+/* rtnetlink receiver for interface and address events */
 static struct os_system_netlink _rtnetlink_receiver = {
   .name = "interface snooper",
   .used_by = &_oonf_os_interface_subsystem,
@@ -149,6 +165,20 @@ static const uint32_t _rtnetlink_mcast[] = {
   RTNLGRP_LINK, RTNLGRP_IPV4_IFADDR, RTNLGRP_IPV6_IFADDR
 };
 
+static struct os_system_netlink _rtnetlink_if_query = {
+  .name = "interface query",
+  .used_by = &_oonf_os_interface_subsystem,
+  .cb_message = _cb_rtnetlink_message,
+  .cb_error = _cb_query_error,
+  .cb_done = _cb_query_done,
+  .cb_timeout = _cb_query_timeout,
+};
+
+static bool _link_query_in_progress = false;
+static bool _address_query_in_progress = false;
+static bool _trigger_link_query = false;
+static bool _trigger_address_query = false;
+
 /* global procfile state before initialization */
 static char _original_rp_filter;
 static char _original_icmp_redirect;
@@ -161,34 +191,60 @@ static int _mesh_count = 0;
 /* kernel version check */
 static bool _is_kernel_2_6_31_or_better;
 
+/* interface data handling */
+static struct oonf_class _interface_data_class = {
+  .name = "network interface data",
+  .size = sizeof(struct os_interface),
+};
+
+static struct oonf_class _interface_class = {
+  .name = "network interface",
+  .size = sizeof(struct os_interface_listener),
+};
+
+static struct oonf_class _interface_ip_class = {
+  .name = "network interface ip",
+  .size = sizeof(struct os_interface_ip),
+};
+
+static struct oonf_timer_class _interface_change_timer = {
+  .name = "interface change",
+  .callback = _cb_interface_changed,
+};
+
+static struct avl_tree _interface_data_tree;
+static const char _ANY_INTERFACE[] = OS_INTERFACE_ANY;
+
 /**
  * Initialize os-specific subsystem
  * @return -1 if an error happened, 0 otherwise
  */
 static int
 _init(void) {
-  _ioctl_fd = socket(AF_INET, SOCK_DGRAM, 0);
-  if (_ioctl_fd == -1) {
-    OONF_WARN(LOG_OS_INTERFACE, "Cannot open ioctl socket: %s (%d)",
-        strerror(errno), errno);
+  if (os_system_linux_netlink_add(&_rtnetlink_receiver, NETLINK_ROUTE)) {
     return -1;
   }
 
-  if (os_system_linux_netlink_add(&_rtnetlink_receiver, NETLINK_ROUTE)) {
-    close(_ioctl_fd);
+  if (os_system_linux_netlink_add(&_rtnetlink_if_query, NETLINK_ROUTE)) {
+    os_system_linux_netlink_remove(&_rtnetlink_receiver);
     return -1;
   }
 
   if (os_system_linux_netlink_add_mc(&_rtnetlink_receiver, _rtnetlink_mcast, ARRAYSIZE(_rtnetlink_mcast))) {
     os_system_linux_netlink_remove(&_rtnetlink_receiver);
-    close(_ioctl_fd);
+    os_system_linux_netlink_remove(&_rtnetlink_if_query);
     return -1;
   }
 
-  list_init_head(&_ifchange_listener);
   list_init_head(&_rtnetlink_feedback);
+  avl_init(&_interface_data_tree, avl_comp_strcasecmp, false);
+  oonf_class_add(&_interface_data_class);
+  oonf_class_add(&_interface_ip_class);
+  oonf_class_add(&_interface_class);
+  oonf_timer_add(&_interface_change_timer);
 
   _is_kernel_2_6_31_or_better = os_system_linux_is_minimal_kernel(2,6,31);
+
   return 0;
 }
 
@@ -197,46 +253,180 @@ _init(void) {
  */
 static void
 _cleanup(void) {
+  struct os_interface_listener *if_listener, *if_listener_it;
+  struct os_interface *os_if, *os_if_it;
+
+  avl_for_each_element_safe(&_interface_data_tree, os_if, _node, os_if_it) {
+    list_for_each_element_safe(&os_if->_listeners, if_listener, _node, if_listener_it) {
+      os_interface_linux_remove(if_listener);
+    }
+  }
+
+  oonf_timer_remove(&_interface_change_timer);
+  oonf_class_remove(&_interface_ip_class);
+  oonf_class_remove(&_interface_data_class);
+  oonf_class_remove(&_interface_class);
+
+  os_system_linux_netlink_remove(&_rtnetlink_if_query);
   os_system_linux_netlink_remove(&_rtnetlink_receiver);
-  close(_ioctl_fd);
+}
+
+static
+void _early_cfg_init(void) {
+  oonf_main_set_parameter_handler(_handle_unused_parameter);
 }
 
 /**
  * Add an interface event listener to the operation system
- * @param listener interface listener
+ * @param if_listener network interface listener
  */
-void
-os_interface_linux_listener_add(struct os_interface_if_listener *listener) {
-  list_add_tail(&_ifchange_listener, &listener->_node);
+struct os_interface *
+os_interface_linux_add(struct os_interface_listener *if_listener) {
+  struct os_interface *data;
+
+  if (if_listener->data) {
+    /* interface is already hooked up to data */
+    return if_listener->data;
+  }
+
+  if (!if_listener->name || !if_listener->name[0]) {
+    if_listener->name = _ANY_INTERFACE;
+  }
+
+  data = avl_find_element(&_interface_data_tree, if_listener->name, data, _node);
+  if (!data) {
+    data = oonf_class_malloc(&_interface_data_class);
+    if (!data) {
+      return NULL;
+    }
+
+    OONF_INFO(LOG_OS_INTERFACE, "Add interface to tracking: %s", if_listener->name);
+
+    /* hook into interface data tree */
+    strscpy(data->name, if_listener->name, IF_NAMESIZE);
+    data->_node.key = data->name;
+    avl_insert(&_interface_data_tree, &data->_node);
+
+    /* initialize list/tree */
+    avl_init(&data->addresses, avl_comp_netaddr, false);
+    list_init_head(&data->_listeners);
+
+    /* initialize change timer */
+    data->_change_timer.class = &_interface_change_timer;
+
+    /* check if this is the unspecified interface "any" */
+    if (strcmp(data->name, _ANY_INTERFACE) == 0) {
+      data->flags.any = true;
+    }
+
+    /* trigger new queries */
+    _trigger_link_query = true;
+    _trigger_address_query = true;
+
+    _query_interface_links();
+  }
+
+  /* hook into interface data */
+  if_listener->data = data;
+  list_add_tail(&data->_listeners, &if_listener->_node);
+
+  if (if_listener->mesh && if_listener->name != _ANY_INTERFACE) {
+    if (!data->_internal.mesh_counter) {
+      _init_mesh(data);
+    }
+    data->_internal.mesh_counter++;
+  }
+
+  /* trigger interface change listener if necessary */
+  if_listener->_dirty = true;
+  oonf_timer_start(&data->_change_timer, 200);
+
+  return data;
 }
 
 /**
  * Remove an interface event listener to the operation system
- * @param listener interface listener
+ * @param if_listener network interface listener
  */
 void
-os_interface_linux_listener_remove(struct os_interface_if_listener *listener) {
-  list_remove(&listener->_node);
+os_interface_linux_remove(struct os_interface_listener *if_listener) {
+  struct os_interface_ip *ip, *ip_iter;
+  struct os_interface *data;
+
+  if (!if_listener->data) {
+    /* interface not hooked up to data */
+    return;
+  }
+
+  OONF_INFO(LOG_OS_INTERFACE, "Remove interface from tracking: %s", if_listener->name);
+
+  if (if_listener->mesh) {
+    if_listener->data->_internal.mesh_counter--;
+    if (!if_listener->data->_internal.mesh_counter) {
+      _cleanup_mesh(if_listener->data);
+    }
+  }
+
+  /* unhook from interface data */
+  data = if_listener->data;
+  if_listener->data = NULL;
+  list_remove(&if_listener->_node);
+
+  if (list_is_empty(&data->_listeners)) {
+    /* remove all addresses */
+    avl_for_each_element_safe(&data->addresses, ip, _node, ip_iter) {
+      avl_remove(&data->addresses, &ip->_node);
+      oonf_class_free(&_interface_ip_class, ip);
+    }
+
+    /* stop change timer */
+    oonf_timer_stop(&data->_change_timer);
+
+    /* remove interface */
+    avl_remove(&_interface_data_tree, &data->_node);
+    oonf_class_free(&_interface_data_class, data);
+  }
 }
 
 /**
+ * @return tree of os interfaces
+ */
+struct avl_tree *
+os_interface_linux_get_tree(void) {
+  return &_interface_data_tree;
+}
+
+/**
+ * Trigger the event handler of an interface listener
+ * @param if_listener network interface listener
+ */
+void
+os_interface_linux_trigger_handler(struct os_interface_listener *if_listener) {
+  if_listener->_dirty = true;
+  if (!oonf_timer_is_active(&if_listener->data->_change_timer)) {
+    oonf_timer_start(&if_listener->data->_change_timer,
+        OS_INTERFACE_CHANGE_TRIGGER_INTERVAL);
+  }
+}
+/**
  * Set interface up or down
- * @param dev pointer to name of interface
+ * @param os_if network interface
  * @param up true if interface should be up, false if down
  * @return -1 if an error happened, 0 otherwise
  */
 int
-os_interface_linux_state_set(const char *dev, bool up) {
+os_interface_linux_state_set(struct os_interface *os_if, bool up) {
   int oldflags;
   struct ifreq ifr;
 
   memset(&ifr, 0, sizeof(ifr));
-  strscpy(ifr.ifr_name, dev, IF_NAMESIZE);
+  strscpy(ifr.ifr_name, os_if->name, IF_NAMESIZE);
 
-  if (ioctl(_ioctl_fd, SIOCGIFFLAGS, &ifr) < 0) {
+  if (ioctl(os_system_linux_linux_get_ioctl_fd(AF_INET),
+      SIOCGIFFLAGS, &ifr) < 0) {
     OONF_WARN(LOG_OS_INTERFACE,
         "ioctl SIOCGIFFLAGS (get flags) error on device %s: %s (%d)\n",
-        dev, strerror(errno), errno);
+        os_if->name, strerror(errno), errno);
     return -1;
   }
 
@@ -253,10 +443,11 @@ os_interface_linux_state_set(const char *dev, bool up) {
     return 0;
   }
 
-  if (ioctl(_ioctl_fd, SIOCSIFFLAGS, &ifr) < 0) {
+  if (ioctl(os_system_linux_linux_get_ioctl_fd(AF_INET),
+      SIOCSIFFLAGS, &ifr) < 0) {
     OONF_WARN(LOG_OS_INTERFACE,
         "ioctl SIOCSIFFLAGS (set flags %s) error on device %s: %s (%d)\n",
-        up ? "up" : "down", dev, strerror(errno), errno);
+        up ? "up" : "down", os_if->name, strerror(errno), errno);
     return -1;
   }
   return 0;
@@ -269,7 +460,8 @@ os_interface_linux_state_set(const char *dev, bool up) {
  *   0 otherwise
  */
 int
-os_interface_linux_address_set(struct os_interface_address *addr) {
+os_interface_linux_address_set(
+    struct os_interface_ip_change *addr) {
   uint8_t buffer[UIO_MAXIOV];
   struct nlmsghdr *msg;
   struct ifaddrmsg *ifaddrreq;
@@ -325,7 +517,7 @@ os_interface_linux_address_set(struct os_interface_address *addr) {
  * @param addr interface address change request
  */
 void
-os_interface_linux_address_interrupt(struct os_interface_address *addr) {
+os_interface_linux_address_interrupt(struct os_interface_ip_change *addr) {
   if (list_is_node_added(&addr->_internal._node)) {
     /* remove first to prevent any kind of recursive cleanup */
     list_remove(&addr->_internal._node);
@@ -338,12 +530,12 @@ os_interface_linux_address_interrupt(struct os_interface_address *addr) {
 
 /**
  * Set the mac address of an interface
- * @param name name of interface
+ * @param os_if network interface
  * @param mac mac address
  * @return -1 if an error happened, 0 otherwise
  */
 int
-os_interface_linux_mac_set_by_name(const char *name, struct netaddr *mac) {
+os_interface_linux_mac_set(struct os_interface *os_if, struct netaddr *mac) {
   struct ifreq if_req;
   struct netaddr_str nbuf;
 
@@ -354,177 +546,31 @@ os_interface_linux_mac_set_by_name(const char *name, struct netaddr *mac) {
   }
 
   memset(&if_req, 0, sizeof(if_req));
-  strscpy(if_req.ifr_name, name, IF_NAMESIZE);
+  strscpy(if_req.ifr_name, os_if->name, IF_NAMESIZE);
 
   if_req.ifr_addr.sa_family = ARPHRD_ETHER;
   netaddr_to_binary(&if_req.ifr_addr.sa_data, mac, 6);
 
   if (ioctl(os_system_linux_linux_get_ioctl_fd(AF_INET), SIOCSIFHWADDR, &if_req) < 0) {
     OONF_WARN(LOG_OS_INTERFACE, "Could not set mac address of '%s': %s (%d)",
-        name, strerror(errno), errno);
+        os_if->name, strerror(errno), errno);
     return -1;
   }
-  return 0;
-}
-
-/**
- * Updates the data of an interface.
- * The interface data object will be completely overwritten
- * @param ifdata pointer to an interface data object
- * @param name name of interface
- * @return -1 if an error happened, 0 otherwise
- */
-int
-os_interface_linux_update(struct os_interface_data *ifdata,
-    const char *name) {
-  struct ifreq ifr;
-  struct ifaddrs *ifaddrs;
-  struct ifaddrs *ifa;
-  size_t addrcount;
-  union netaddr_socket *sock;
-  struct netaddr *addr, *prefix, netmask;
-#ifdef OONF_LOG_INFO
-  struct netaddr_str nbuf1;
-#endif
-#ifdef OONF_LOG_DEBUG_INFO
-  struct netaddr_str nbuf2, nbuf3;
-#endif
-
-  /* cleanup data structure */
-  if (ifdata->addresses) {
-    free(ifdata->addresses);
-  }
-
-  memset(ifdata, 0, sizeof(*ifdata));
-  strscpy(ifdata->name, name, sizeof(ifdata->name));
-
-  /* get interface index */
-  ifdata->index = if_nametoindex(name);
-  if (ifdata->index == 0) {
-    /* interface is not there at the moment */
-    return 0;
-  }
-
-  ifdata->base_index = _os_linux_get_base_ifindex(name);
-
-  memset(&ifr, 0, sizeof(ifr));
-  strscpy(ifr.ifr_name, ifdata->name, IF_NAMESIZE);
-
-  if (ioctl(os_system_linux_linux_get_ioctl_fd(AF_INET), SIOCGIFFLAGS, &ifr) < 0) {
-    OONF_WARN(LOG_OS_INTERFACE,
-        "ioctl SIOCGIFFLAGS (get flags) error on device %s: %s (%d)\n",
-        ifdata->name, strerror(errno), errno);
-    return -1;
-  }
-
-  ifdata->up = (ifr.ifr_flags & IFF_UP) == IFF_UP;
-  ifdata->loopback = (ifr.ifr_flags & IFF_LOOPBACK) != 0;
-
-  memset(&ifr, 0, sizeof(ifr));
-  strscpy(ifr.ifr_name, ifdata->name, IF_NAMESIZE);
-
-  if (ioctl(os_system_linux_linux_get_ioctl_fd(AF_INET), SIOCGIFHWADDR, &ifr) < 0) {
-    OONF_WARN(LOG_OS_INTERFACE,
-        "ioctl SIOCGIFHWADDR (get flags) error on device %s: %s (%d)\n",
-        ifdata->name, strerror(errno), errno);
-    return -1;
-  }
-
-  netaddr_from_binary(&ifdata->mac, ifr.ifr_hwaddr.sa_data, 6, AF_MAC48);
-  OONF_INFO(LOG_OS_INTERFACE, "Interface %s has mac address %s",
-      ifdata->name, netaddr_to_string(&nbuf1, &ifdata->mac));
-
-  /* get ip addresses */
-  ifaddrs = NULL;
-  addrcount = 0;
-
-  if (getifaddrs(&ifaddrs)) {
-    OONF_WARN(LOG_OS_INTERFACE,
-        "getifaddrs() failed: %s (%d)", strerror(errno), errno);
-    return -1;
-  }
-
-  for (ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next) {
-    if (strcmp(ifdata->name, ifa->ifa_name) == 0 && ifa->ifa_addr != NULL &&
-        (ifa->ifa_addr->sa_family == AF_INET || ifa->ifa_addr->sa_family == AF_INET6)) {
-      addrcount++;
-    }
-  }
-
-  ifdata->addresses = calloc(addrcount*2, sizeof(struct netaddr));
-  if (ifdata->addresses == NULL) {
-    OONF_WARN(LOG_OS_INTERFACE,
-        "Cannot allocate memory for interface %s with %"PRINTF_SIZE_T_SPECIFIER" prefixes",
-        ifdata->name, addrcount);
-    freeifaddrs(ifaddrs);
-    return -1;
-  }
-
-  ifdata->prefixes = &ifdata->addresses[addrcount];
-
-  ifdata->if_v4 = &NETADDR_UNSPEC;
-  ifdata->if_v6 = &NETADDR_UNSPEC;
-  ifdata->linklocal_v6_ptr = &NETADDR_UNSPEC;
-
-  for (ifa = ifaddrs; ifa != NULL; ifa = ifa->ifa_next) {
-    if (strcmp(ifdata->name, ifa->ifa_name) == 0 && ifa->ifa_addr != NULL &&
-        (ifa->ifa_addr->sa_family == AF_INET || ifa->ifa_addr->sa_family == AF_INET6)) {
-      sock = (union netaddr_socket *)ifa->ifa_addr;
-      addr = &ifdata->addresses[ifdata->addrcount];
-
-      /* get address of interface */
-      if (netaddr_from_socket(addr, sock) == 0) {
-        ifdata->addrcount++;
-
-        sock = (union netaddr_socket *)ifa->ifa_netmask;
-        prefix = &ifdata->prefixes[ifdata->prefixcount];
-
-        /* get corresponding prefix if possible */
-        if (!netaddr_from_socket(&netmask, sock)) {
-          if (!netaddr_create_prefix(prefix, addr, &netmask, false)) {
-            OONF_DEBUG(LOG_OS_INTERFACE, "Address %s and Netmask %s produce prefix %s",
-                netaddr_to_string(&nbuf1, addr),
-                netaddr_to_string(&nbuf2, &netmask),
-                netaddr_to_string(&nbuf3, prefix));
-            ifdata->prefixcount++;
-          }
-        }
-
-        if (netaddr_get_address_family(addr) == AF_INET) {
-          if (!netaddr_is_in_subnet(&NETADDR_IPV4_MULTICAST, addr)) {
-            ifdata->if_v4 = addr;
-          }
-        }
-        else if (netaddr_get_address_family(addr) == AF_INET6) {
-          if (netaddr_is_in_subnet(&NETADDR_IPV6_LINKLOCAL, addr)) {
-            ifdata->linklocal_v6_ptr = addr;
-          }
-          else if (!(netaddr_is_in_subnet(&NETADDR_IPV6_MULTICAST, addr)
-              || netaddr_is_in_subnet(&NETADDR_IPV6_IPV4COMPATIBLE, addr)
-              || netaddr_is_in_subnet(&NETADDR_IPV6_IPV4MAPPED, addr))) {
-            ifdata->if_v6 = addr;
-          }
-        }
-      }
-    }
-  }
-
-  freeifaddrs(ifaddrs);
   return 0;
 }
 
 /**
  * Initialize interface for mesh usage
- * @param interf pointer to interface object
+ * @param os_if network interface data
  * @return -1 if an error happened, 0 otherwise
  */
-int
-os_interface_linux_init_mesh(struct os_interface *interf) {
+static int
+_init_mesh(struct os_interface *os_if) {
   char procfile[FILENAME_MAX];
   char old_redirect = 0, old_spoof = 0;
 
-  if (interf->data.loopback) {
-    /* ignore loopback */
+  if (os_if->flags.loopback || os_if->flags.any) {
+    /* ignore loopback and unspecific interface*/
     return 0;
   }
 
@@ -535,7 +581,7 @@ os_interface_linux_init_mesh(struct os_interface *interf) {
   }
 
   /* Generate the procfile name */
-  snprintf(procfile, sizeof(procfile), PROC_IF_REDIRECT, interf->data.name);
+  snprintf(procfile, sizeof(procfile), PROC_IF_REDIRECT, os_if->name);
 
   if (_os_linux_writeToFile(procfile, &old_redirect, '0')) {
     OONF_WARN(LOG_OS_INTERFACE, "WARNING! Could not disable ICMP redirects! "
@@ -543,36 +589,108 @@ os_interface_linux_init_mesh(struct os_interface *interf) {
   }
 
   /* Generate the procfile name */
-  snprintf(procfile, sizeof(procfile), PROC_IF_SPOOF, interf->data.name);
+  snprintf(procfile, sizeof(procfile), PROC_IF_SPOOF, os_if->name);
 
   if (_os_linux_writeToFile(procfile, &old_spoof, '0')) {
     OONF_WARN(LOG_OS_INTERFACE, "WARNING! Could not disable the IP spoof filter! "
         "You should mannually ensure that IP spoof filtering is disabled!");
   }
 
-  interf->_original_state = (old_redirect << 8) | (old_spoof);
+  os_if->_internal._original_state = (old_redirect << 8) | (old_spoof);
   return 0;
 }
 
 /**
- * Cleanup interface after mesh usage
- * @param interf pointer to interface object
+ * Query a dump of all interface link data
  */
-void
-os_interface_linux_cleanup_mesh(struct os_interface *interf) {
-  char restore_redirect, restore_spoof;
-  char procfile[FILENAME_MAX];
+static void
+_query_interface_links(void) {
+  uint8_t buffer[UIO_MAXIOV];
+  struct nlmsghdr *msg;
+  struct ifinfomsg *ifi;
+#if defined(OONF_LOG_DEBUG_INFO)
+#endif
 
-  if (interf->data.loopback) {
-    /* ignore loopback */
+  if (_link_query_in_progress || _address_query_in_progress) {
     return;
   }
 
-  restore_redirect = (interf->_original_state >> 8) & 255;
-  restore_spoof = (interf->_original_state & 255);
+  OONF_DEBUG(LOG_OS_INTERFACE, "Request all interfaces");
+
+  _trigger_link_query = false;
+
+  /* get pointers for netlink message */
+  msg = (void *)&buffer[0];
+
+  /* get link level data */
+  memset(buffer, 0, sizeof(buffer));
+  msg->nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+  msg->nlmsg_type = RTM_GETLINK;
+
+  /* set length of netlink message with ifinfomsg payload */
+  msg->nlmsg_len = NLMSG_LENGTH(sizeof(*ifi));
+
+  ifi = NLMSG_DATA(msg);
+  ifi->ifi_family = AF_NETLINK;
+
+  /* we don't care for the sequence number */
+  os_system_linux_netlink_send(&_rtnetlink_if_query, msg);
+}
+
+/**
+ * Query a dump of all interface link data
+ */
+static void
+_query_interface_addresses(void) {
+  uint8_t buffer[UIO_MAXIOV];
+  struct nlmsghdr *msg;
+  struct ifaddrmsg *ifa;
+
+  if (_link_query_in_progress || _address_query_in_progress) {
+    return;
+  }
+
+  _trigger_address_query = false;
+
+  OONF_DEBUG(LOG_OS_INTERFACE, "Request all interfaces");
+
+  /* get pointers for netlink message */
+  msg = (void *)&buffer[0];
+
+  /* get IP level data */
+  memset(buffer, 0, sizeof(buffer));
+  msg->nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+  msg->nlmsg_type = RTM_GETADDR;
+
+  /* set length of netlink message with ifaddrmsg payload */
+  msg->nlmsg_len = NLMSG_LENGTH(sizeof(*ifa));
+
+  ifa = NLMSG_DATA(msg);
+  ifa->ifa_family = AF_UNSPEC;
+
+  /* we don't care for the sequence number */
+  os_system_linux_netlink_send(&_rtnetlink_if_query, msg);
+}
+
+/**
+ * Cleanup interface after mesh usage
+ * @param data network interface data
+ */
+static void
+_cleanup_mesh(struct os_interface *os_if) {
+  char restore_redirect, restore_spoof;
+  char procfile[FILENAME_MAX];
+
+  if (os_if->flags.loopback || os_if->flags.any) {
+    /* ignore loopback and unspecific interface*/
+    return;
+  }
+
+  restore_redirect = (os_if->_internal._original_state >> 8) & 255;
+  restore_spoof = (os_if->_internal._original_state & 255);
 
   /* Generate the procfile name */
-  snprintf(procfile, sizeof(procfile), PROC_IF_REDIRECT, interf->data.name);
+  snprintf(procfile, sizeof(procfile), PROC_IF_REDIRECT, os_if->name);
 
   if (_os_linux_writeToFile(procfile, NULL, restore_redirect) != 0) {
     OONF_WARN(LOG_OS_INTERFACE, "Could not restore ICMP redirect flag %s to %c",
@@ -580,7 +698,7 @@ os_interface_linux_cleanup_mesh(struct os_interface *interf) {
   }
 
   /* Generate the procfile name */
-  snprintf(procfile, sizeof(procfile), PROC_IF_SPOOF, interf->data.name);
+  snprintf(procfile, sizeof(procfile), PROC_IF_SPOOF, os_if->name);
 
   if (_os_linux_writeToFile(procfile, NULL, restore_spoof) != 0) {
     OONF_WARN(LOG_OS_INTERFACE, "Could not restore IP spoof flag %s to %c",
@@ -593,49 +711,8 @@ os_interface_linux_cleanup_mesh(struct os_interface *interf) {
     _deactivate_if_routing();
   }
 
-  interf->_original_state = 0;
+  os_if->_internal._original_state = 0;
   return;
-}
-
-/**
- * Get the base interface index of a VLAN interface
- * @param interf name of VLAN interface
- * @return interface index of base interface
- */
-static unsigned
-_os_linux_get_base_ifindex(const char *interf) {
-  char sysfile[FILENAME_MAX];
-  char ifnumber[11];
-  int fd;
-  ssize_t len;
-
-  /* Generate the sysfs name */
-  snprintf(sysfile, sizeof(sysfile), SYSFS_BASE_IFINDEX, interf);
-
-  if ((fd = open(sysfile, O_RDONLY)) < 0) {
-    OONF_WARN(LOG_OS_INTERFACE,
-      "Error, cannot open sysfs entry %s: %s (%d)\n",
-      sysfile, strerror(errno), errno);
-    return 0;
-  }
-
-  if ((len = read(fd, &ifnumber, sizeof(ifnumber))) < 0) {
-    OONF_WARN(LOG_OS_INTERFACE,
-      "Error, cannot read proc entry %s: %s (%d)\n",
-      sysfile, strerror(errno), errno);
-    close(fd);
-    return 0;
-  }
-
-  if (len >= (ssize_t)sizeof(ifnumber)) {
-    OONF_WARN(LOG_OS_INTERFACE, "Content of %s too long", sysfile);
-    close(fd);
-    return 0;
-  }
-
-  ifnumber[len] = 0;
-  close(fd);
-  return atoi(ifnumber);
 }
 
 /**
@@ -760,6 +837,263 @@ _os_linux_writeToFile(const char *file, char *old, char value) {
 }
 
 /**
+ * Trigger all change listeners of a network interface
+ * @param os_if network interface
+ */
+static void
+_trigger_if_change(struct os_interface *os_if) {
+  struct os_interface_listener *if_listener;
+
+  if (!oonf_timer_is_active(&os_if->_change_timer)) {
+    /* inform listeners the interface changed */
+    oonf_timer_start(&os_if->_change_timer, 200);
+
+    list_for_each_element(&os_if->_listeners, if_listener, _node) {
+      /* each interface should be informed */
+      if_listener->_dirty = true;
+    }
+  }
+}
+
+/**
+ * Trigger all change listeners of a network interface.
+ * Trigger also all change listeners of the wildcard interface "any"
+ * @param os_if network interface
+ */
+static void
+_trigger_if_change_including_any(struct os_interface *os_if) {
+  _trigger_if_change(os_if);
+
+  os_if = avl_find_element(
+      &_interface_data_tree, OS_INTERFACE_ANY, os_if, _node);
+  if (os_if) {
+    _trigger_if_change(os_if);
+  }
+}
+
+/**
+ * Parse an incoming LINK information from netlink
+ * @param ifname interface name
+ * @param msg netlink message
+ */
+static void
+_link_parse_nlmsg(const char *ifname, struct nlmsghdr *msg) {
+  struct ifinfomsg *ifi_msg;
+  struct rtattr *ifi_attr;
+  int ifi_len;
+  struct netaddr addr;
+  struct os_interface *ifdata;
+  int iflink;
+#if defined(OONF_LOG_DEBUG_INFO)
+  struct netaddr_str nbuf;
+#endif
+
+  ifi_msg = NLMSG_DATA(msg);
+  ifi_attr = (struct rtattr *) IFLA_RTA(ifi_msg);
+  ifi_len = RTM_PAYLOAD(msg);
+
+  ifdata = avl_find_element(&_interface_data_tree, ifname, ifdata, _node);
+  if (!ifdata) {
+    return;
+  }
+
+  ifdata->flags.up = (ifi_msg->ifi_flags & IFF_UP) != 0;
+  ifdata->flags.promisc = (ifi_msg->ifi_flags & IFF_PROMISC) != 0;
+  ifdata->flags.pointtopoint = (ifi_msg->ifi_flags & IFF_POINTOPOINT) != 0;
+  ifdata->flags.loopback = (ifi_msg->ifi_flags & IFF_LOOPBACK) != 0;
+
+  OONF_DEBUG(LOG_OS_INTERFACE, "Parse IFI_LINK %s (%u): %c%c%c%c",
+      ifname, ifi_msg->ifi_index,
+      ifdata->flags.up ? 'u' : '-',
+      ifdata->flags.promisc ? 'p' : '-',
+      ifdata->flags.pointtopoint ? 'P' : '-',
+      ifdata->flags.loopback ? 'l' : '-');
+
+  ifdata->index = ifi_msg->ifi_index;
+
+  for(; RTA_OK(ifi_attr, ifi_len); ifi_attr = RTA_NEXT(ifi_attr,ifi_len)) {
+    switch(ifi_attr->rta_type) {
+      case IFLA_ADDRESS:
+        netaddr_from_binary(&addr, RTA_DATA(ifi_attr), RTA_PAYLOAD(ifi_attr), AF_MAC48);
+        OONF_DEBUG(LOG_OS_INTERFACE, "Link: %s", netaddr_to_string(&nbuf, &addr));
+
+        if (msg->nlmsg_type == RTM_NEWLINK) {
+          memcpy(&ifdata->mac, &addr, sizeof(addr));
+        }
+        break;
+      case IFLA_LINK:
+        memcpy(&iflink, RTA_DATA(ifi_attr), RTA_PAYLOAD(ifi_attr));
+
+        OONF_INFO(LOG_OS_INTERFACE, "Base interface index for %s (%u): %u",
+            ifdata->name, ifdata->index, iflink);
+        ifdata->base_index = iflink;
+        break;
+      default:
+        //OONF_DEBUG(LOG_OS_INTERFACE, "ifi_attr_type: %u", ifi_attr->rta_type);
+        break;
+    }
+  }
+
+  _trigger_if_change_including_any(ifdata);
+}
+
+/**
+ * Update the links for routable/ll addresses of a network interface
+ * @param os_if network interface
+ */
+static void
+_update_address_shortcuts(struct os_interface *os_if) {
+  struct os_interface_ip *ip;
+  bool ipv4_ll, ipv6_ll, ipv4_routable, ipv6_routable;
+
+  /* update address shortcuts */
+  os_if->if_v4 = &NETADDR_UNSPEC;
+  os_if->if_v6 = &NETADDR_UNSPEC;
+  os_if->if_linklocal_v4 = &NETADDR_UNSPEC;
+  os_if->if_linklocal_v6 = &NETADDR_UNSPEC;
+
+  avl_for_each_element(&os_if->addresses, ip, _node) {
+    ipv4_ll = netaddr_is_in_subnet(&ip->address, &NETADDR_IPV4_LINKLOCAL);
+    ipv6_ll = netaddr_is_in_subnet(&ip->address, &NETADDR_IPV6_LINKLOCAL);
+
+    ipv4_routable = !ipv4_ll
+        && netaddr_get_address_family(&ip->address) == AF_INET
+        && !netaddr_is_in_subnet(&ip->address, &NETADDR_IPV4_LOOPBACK_NET)
+        && !netaddr_is_in_subnet(&ip->address, &NETADDR_IPV4_MULTICAST);
+    ipv6_routable = !ipv4_ll
+        && (netaddr_is_in_subnet(&ip->address, &NETADDR_IPV6_ULA)
+            || netaddr_is_in_subnet(&ip->address, &NETADDR_IPV6_GLOBAL));
+
+    if (netaddr_is_unspec(os_if->if_v4) && ipv4_routable) {
+      os_if->if_v4 = &ip->address;
+    }
+    if (netaddr_is_unspec(os_if->if_v6) && ipv6_routable) {
+      os_if->if_v6 = &ip->address;
+    }
+    if (netaddr_is_unspec(os_if->if_linklocal_v4) && ipv4_ll) {
+      os_if->if_linklocal_v4 = &ip->address;
+    }
+    if (netaddr_is_unspec(os_if->if_linklocal_v6) && ipv6_ll) {
+      os_if->if_linklocal_v6 = &ip->address;
+    }
+  }
+}
+
+/**
+ * Add an IP address/prefix to a network interface
+ * @param os_if network interface
+ * @param prefixed_addr full IP address with prefix length
+ */
+static void
+_add_address(struct os_interface *os_if, struct netaddr *prefixed_addr) {
+  struct os_interface_ip *ip;
+#if defined(OONF_LOG_INFO)
+  struct netaddr_str nbuf;
+#endif
+
+  ip = avl_find_element(&os_if->addresses, prefixed_addr, ip, _node);
+  if (!ip) {
+    ip = oonf_class_malloc(&_interface_ip_class);
+    if (!ip) {
+      return;
+    }
+
+    /* establish key and add to tree */
+    memcpy(&ip->prefixed_addr, prefixed_addr, sizeof(*prefixed_addr));
+    ip->_node.key = &ip->prefixed_addr;
+    avl_insert(&os_if->addresses, &ip->_node);
+
+    /* add back pointer */
+    ip->interf = os_if;
+  }
+
+  OONF_INFO(LOG_OS_INTERFACE, "Add address to %s: %s",
+      os_if->name, netaddr_to_string(&nbuf, prefixed_addr));
+
+  /* copy sanitized addresses */
+  memcpy(&ip->address, prefixed_addr, sizeof(*prefixed_addr));
+  netaddr_set_prefix_length(&ip->address, netaddr_get_maxprefix(&ip->address));
+  netaddr_truncate(&ip->prefix, prefixed_addr);
+}
+
+/**
+ * Remove an IP address/prefix from a network interface
+ * @param os_if network interface
+ * @param prefixed_addr full IP address with prefix length
+ */
+static void
+_remove_address(struct os_interface *os_if, struct netaddr *prefixed_addr) {
+  struct os_interface_ip *ip;
+#if defined(OONF_LOG_INFO)
+  struct netaddr_str nbuf;
+#endif
+
+  ip = avl_find_element(&os_if->addresses, prefixed_addr, ip, _node);
+  if (!ip) {
+    return;
+  }
+
+  OONF_INFO(LOG_OS_INTERFACE, "Remove address from %s: %s",
+      os_if->name, netaddr_to_string(&nbuf, prefixed_addr));
+
+  avl_remove(&os_if->addresses, &ip->_node);
+  oonf_class_free(&_interface_ip_class, ip);
+}
+
+/**
+ * Parse an incoming IP address information from netlink
+ * @param ifname name of interface
+ * @param msg netlink message
+ */
+static void
+_address_parse_nlmsg(const char *ifname, struct nlmsghdr *msg) {
+  struct ifaddrmsg *ifa_msg;
+  struct rtattr *ifa_attr;
+  int ifa_len;
+  struct os_interface *ifdata;
+  struct netaddr addr;
+  bool update;
+
+  ifa_msg = NLMSG_DATA(msg);
+  ifa_attr = IFA_RTA(ifa_msg);
+  ifa_len = RTM_PAYLOAD(msg);
+
+  ifdata = avl_find_element(&_interface_data_tree, ifname, ifdata, _node);
+  if (!ifdata) {
+    return;
+  }
+
+  OONF_DEBUG(LOG_OS_INTERFACE, "Parse IFA_GETADDR %s (%u) (len=%u)",
+      ifname, ifa_msg->ifa_index, ifa_len);
+
+  update = false;
+  for(; RTA_OK(ifa_attr, ifa_len); ifa_attr = RTA_NEXT(ifa_attr,ifa_len)) {
+    switch(ifa_attr->rta_type) {
+      case IFA_ADDRESS:
+        netaddr_from_binary_prefix(&addr, RTA_DATA(ifa_attr), RTA_PAYLOAD(ifa_attr), 0,
+            ifa_msg->ifa_prefixlen);
+        if (msg->nlmsg_type == RTM_NEWADDR) {
+          _add_address(ifdata, &addr);
+        }
+        else {
+          _remove_address(ifdata, &addr);
+        }
+        update = true;
+        break;
+      default:
+        OONF_DEBUG(LOG_OS_INTERFACE, "ifa_attr_type: %u", ifa_attr->rta_type);
+        break;
+    }
+  }
+
+  if (update) {
+    _update_address_shortcuts(ifdata);
+  }
+
+  _trigger_if_change_including_any(ifdata);
+}
+
+/**
  * Handle incoming rtnetlink multicast messages for interface listeners
  * @param hdr pointer to netlink message
  */
@@ -767,36 +1101,42 @@ static void
 _cb_rtnetlink_message(struct nlmsghdr *hdr) {
   struct ifinfomsg *ifi;
   struct ifaddrmsg *ifa;
-
-  struct os_interface_if_listener *listener;
+  char ifname[IF_NAMESIZE];
 
   if (hdr->nlmsg_type == RTM_NEWLINK || hdr->nlmsg_type == RTM_DELLINK) {
     ifi = (struct ifinfomsg *) NLMSG_DATA(hdr);
-
-    OONF_DEBUG(LOG_OS_INTERFACE, "Linkstatus of interface %d changed", ifi->ifi_index);
-    list_for_each_element(&_ifchange_listener, listener, _node) {
-      listener->if_changed(ifi->ifi_index, (ifi->ifi_flags & IFF_UP) == 0);
+    if (!if_indextoname(ifi->ifi_index, ifname)) {
+      return;
     }
+
+    OONF_DEBUG(LOG_OS_INTERFACE, "Linkstatus of interface (%s) %d changed",
+        ifname, ifi->ifi_index);
+    _link_parse_nlmsg(ifname, hdr);
   }
 
   else if (hdr->nlmsg_type == RTM_NEWADDR || hdr->nlmsg_type == RTM_DELADDR) {
     ifa = (struct ifaddrmsg *) NLMSG_DATA(hdr);
-
-    OONF_DEBUG(LOG_OS_INTERFACE, "Address of interface %u changed", ifa->ifa_index);
-    list_for_each_element(&_ifchange_listener, listener, _node) {
-      listener->if_changed(ifa->ifa_index, (ifa->ifa_flags & IFF_UP) == 0);
+    if (!if_indextoname(ifa->ifa_index, ifname)) {
+      return;
     }
+
+    OONF_DEBUG(LOG_OS_INTERFACE, "Address of interface %s (%u) changed",
+        ifname, ifa->ifa_index);
+    _address_parse_nlmsg(ifname, hdr);
+  }
+  else {
+    OONF_DEBUG(LOG_OS_INTERFACE, "Message type: %u", hdr->nlmsg_type);
   }
 }
 
 /**
  * Handle feedback from netlink socket
- * @param seq
- * @param error
+ * @param seq sequence number of netlink message
+ * @param error error code
  */
 static void
 _cb_rtnetlink_error(uint32_t seq, int error) {
-  struct os_interface_address *addr;
+  struct os_interface_ip_change *addr;
 
   OONF_INFO(LOG_OS_INTERFACE, "Netlink socket provided feedback: %d %d", seq, error);
 
@@ -814,7 +1154,7 @@ _cb_rtnetlink_error(uint32_t seq, int error) {
  */
 static void
 _cb_rtnetlink_timeout(void) {
-  struct os_interface_address *addr;
+  struct os_interface_ip_change *addr;
 
   OONF_INFO(LOG_OS_INTERFACE, "Netlink socket timed out");
 
@@ -825,11 +1165,11 @@ _cb_rtnetlink_timeout(void) {
 
 /**
  * Handle done from multipart netlink messages
- * @param seq
+ * @param seq sequence number of netlink message
  */
 static void
 _cb_rtnetlink_done(uint32_t seq) {
-  struct os_interface_address *addr;
+  struct os_interface_ip_change *addr;
 
   OONF_INFO(LOG_OS_INTERFACE, "Netlink operation finished: %u", seq);
 
@@ -848,7 +1188,7 @@ _cb_rtnetlink_done(uint32_t seq) {
  * @param error error code, 0 if no error
  */
 static void
-_address_finished(struct os_interface_address *addr, int error) {
+_address_finished(struct os_interface_ip_change *addr, int error) {
   if (list_is_node_added(&addr->_internal._node)) {
     /* remove first to prevent any kind of recursive cleanup */
     list_remove(&addr->_internal._node);
@@ -857,4 +1197,122 @@ _address_finished(struct os_interface_address *addr, int error) {
       addr->cb_finished(addr, error);
     }
   }
+}
+
+/**
+ * Handle switching between netlink query for links and addresses
+ */
+static void
+_process_end_of_query(void) {
+  if (_link_query_in_progress) {
+    _link_query_in_progress = false;
+
+    if (_trigger_address_query) {
+      _query_interface_addresses();
+    }
+    else if (_trigger_link_query) {
+      _query_interface_links();
+    }
+  }
+  else {
+    _address_query_in_progress = false;
+
+    if (_trigger_link_query) {
+      _query_interface_links();
+    }
+    else if (_trigger_address_query) {
+      _query_interface_addresses();
+    }
+  }
+}
+
+/**
+ * Handle a netlink query that did not work out
+ */
+static void
+_process_bad_end_of_query(void) {
+  /* reactivate query that has failed */
+  if (_link_query_in_progress) {
+    _trigger_link_query = true;
+  }
+  if (_address_query_in_progress) {
+    _trigger_address_query = true;
+  }
+  _process_end_of_query();
+}
+
+/**
+ * Handle an incoming netlink query error
+ * @param seq sequence number of netlink message
+ * @param error error code
+ */
+static void
+_cb_query_error(uint32_t seq __attribute((unused)),
+    int error __attribute((unused))) {
+  _process_bad_end_of_query();
+}
+
+/**
+ * Handle a successful netlink query
+ * @param seq sequence number of netlink message
+ */
+static void
+_cb_query_done(uint32_t seq __attribute((unused))) {
+  _process_end_of_query();
+}
+
+/**
+ * Handle a timeout of a netlink query
+ */
+static void
+_cb_query_timeout(void) {
+  _process_bad_end_of_query();
+}
+
+/**
+ * Handle timer that announces interface state/address changes
+ * @param timer timer instance
+ */
+static void
+_cb_interface_changed(struct oonf_timer_instance *timer) {
+  struct os_interface *data;
+  struct os_interface_listener *interf, *interf_it;
+  bool error;
+
+  data = container_of(timer, struct os_interface, _change_timer);
+
+  OONF_INFO(LOG_OS_INTERFACE, "Interface %s (%u) changed",
+      data->name, data->index);
+
+  error = false;
+  list_for_each_element_safe(&data->_listeners, interf, _node, interf_it) {
+    if (!interf->_dirty) {
+      continue;
+    }
+
+    if (interf->if_changed && interf->if_changed(interf)) {
+      /* interface change handler had a problem and wants to re-trigger */
+      error = true;
+    }
+    else {
+      /* everything fine, job done */
+      interf->_dirty = false;
+    }
+  }
+
+  if (error) {
+    /* re-trigger */
+    oonf_timer_start(timer, 200);
+  }
+}
+
+/**
+ * Transform remaining parameters into interface sections
+ * @param arg command line parameter
+ * @return always 0 (ok)
+ */
+static int
+_handle_unused_parameter(const char *arg) {
+  cfg_db_add_namedsection(oonf_cfg_get_rawdb(), CFG_INTERFACE_SECTION, arg);
+  return 0;
 }

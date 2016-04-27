@@ -56,9 +56,9 @@
 #include "core/oonf_logging.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_rfc5444.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 
 #include "nhdp/nhdp.h"
 #include "nhdp/nhdp_domain.h"
@@ -110,7 +110,7 @@ static struct cfg_schema_entry _constant_entries[] = {
 static struct cfg_schema_section _constant_section = {
   .type = OONF_CONSTANT_METRIC_SUBSYSTEM,
   .mode = CFG_SSMODE_NAMED_WITH_DEFAULT,
-  .def_name = OONF_INTERFACE_WILDCARD,
+  .def_name = OS_INTERFACE_ANY,
   .cb_delta_handler = _cb_cfg_changed,
   .entries = _constant_entries,
   .entry_count = ARRAYSIZE(_constant_entries),
@@ -118,8 +118,8 @@ static struct cfg_schema_section _constant_section = {
 
 static const char *_dependencies[] = {
   OONF_CLASS_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_TIMER_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
   OONF_NHDP_SUBSYSTEM,
 };
 static struct oonf_subsystem _olsrv2_constant_metric_subsystem = {
@@ -265,17 +265,17 @@ _cb_set_linkcost(struct oonf_timer_instance *ptr __attribute__((unused))) {
       entry = _get_linkcost(ifname, &lnk->dualstack_partner->neigh->originator);
     }
     if (entry == NULL) {
-      entry = _get_linkcost(OONF_INTERFACE_WILDCARD, &lnk->neigh->originator);
+      entry = _get_linkcost(OS_INTERFACE_ANY, &lnk->neigh->originator);
     }
     if (entry == NULL && nhdp_db_link_is_dualstack(lnk)) {
-      entry = _get_linkcost(OONF_INTERFACE_WILDCARD,
+      entry = _get_linkcost(OS_INTERFACE_ANY,
           &lnk->dualstack_partner->neigh->originator);
     }
     if (entry == NULL)  {
       entry = _get_linkcost(ifname, &NETADDR_UNSPEC);
     }
     if (entry == NULL) {
-      entry = _get_linkcost(OONF_INTERFACE_WILDCARD, &NETADDR_UNSPEC);
+      entry = _get_linkcost(OS_INTERFACE_ANY, &NETADDR_UNSPEC);
     }
     if (entry) {
       OONF_DEBUG(LOG_CONSTANT_METRIC, "Found metric value %u", entry->cost);

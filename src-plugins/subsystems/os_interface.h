@@ -53,36 +53,20 @@
 #include "common/list.h"
 #include "core/oonf_logging.h"
 #include "subsystems/oonf_timer.h"
-#include "subsystems/os_interface_data.h"
+#include "subsystems/os_interface.h"
 
 /*! subsystem identifier */
 #define OONF_OS_INTERFACE_SUBSYSTEM "os_interface"
 
-/**
- * operation system listener for interface events
- */
-struct os_interface_if_listener {
-  /**
-   * Callback triggered when the interface changesd
-   * @param if_index interface index
-   * @param up true if interface is up
-   */
-  void (*if_changed)(unsigned if_index, bool up);
+/*! interface configuration section name */
+#define CFG_INTERFACE_SECTION      "interface"
 
-  /*! hook to global list of listeners */
-  struct list_entity _node;
-};
-
-struct os_interface;
-struct os_interface_address;
+/*! interface configuration section mode */
+#define CFG_INTERFACE_SECTION_MODE CFG_SSMODE_NAMED
 
 /* include os-specific headers */
 #if defined(__linux__)
-#include "subsystems/os_linux/os_interface_linux.h"
-#elif defined (BSD)
-#include "subsystems/os_bsd/os_interface_bsd.h"
-#elif defined (_WIN32)
-#include "subsystems/os_win32/os_interface_win32.h"
+#include "subsystems/os_linux/os_interface_linux_internal.h"
 #else
 #error "Unknown operation system"
 #endif
@@ -90,9 +74,9 @@ struct os_interface_address;
 /**
  * Handler for changing an interface address
  */
-struct os_interface_address {
-  /*! used for delivering feedback about netlink commands */
-  struct os_interface_address_internal _internal;
+struct os_interface_ip_change {
+  /*! operation system specific data */
+  struct os_interface_address_change_internal _internal;
 
   /*! interface address */
   struct netaddr address;
@@ -111,27 +95,80 @@ struct os_interface_address {
    * @param addr this interface address object
    * @param error error code, 0 if everything is fine
    */
-  void (*cb_finished)(struct os_interface_address *addr, int error);
+  void (*cb_finished)(struct os_interface_ip_change *addr, int error);
+};
+
+struct os_interface_flags {
+  /*! true if the interface exists and is up */
+  bool up;
+
+  /*! true if the interface is in promiscious mode */
+  bool promisc;
+
+  /*! true if the interface is point to point */
+  bool pointtopoint;
+
+  /*! true if the interface is a loopback one */
+  bool loopback;
+
+  /*! true if interface is the wildcard interface */
+  bool any;
 };
 
 /**
  * Representation of an operation system interface
  */
 struct os_interface {
-  /*! data of interface */
-  struct os_interface_data data;
+  /*! operation system specific data */
+  struct os_interface_internal _internal;
+
+  /*! interface name */
+  char name[IF_NAMESIZE];
+
+  /*! interface index */
+  unsigned index;
 
   /**
-   * usage counter to allow multiple instances to add the same
-   * interface
+   * interface index of base interface (for vlan),
+   * same for normal interface
    */
-  uint32_t usage_counter;
+  unsigned base_index;
+
+  /*! boolean flags of interface */
+  struct os_interface_flags flags;
+
+  /*! mac address of interface */
+  struct netaddr mac;
 
   /**
-   * usage counter to keep track of the number of users on
-   * this interface who want to send mesh traffic
+   * point to one (mesh scope) IPv4 address of the interface
+   * (or to NETADDR_UNSPEC if none available)
    */
-  uint32_t mesh_counter;
+  const struct netaddr *if_v4;
+
+  /**
+   * point to one (mesh scope) IPv4 address of the interface
+   * (or to NETADDR_UNSPEC if none available)
+   */
+  const struct netaddr *if_v6;
+
+  /**
+   * point to one (linklocal scope) IPv4 address of the interface
+   * (or to NETADDR_UNSPEC if none available)
+   */
+  const struct netaddr *if_linklocal_v4;
+
+  /**
+   * point to one (linklocal scope) IPv6 address of the interface
+   * (or to NETADDR_UNSPEC if none available)
+   */
+  const struct netaddr *if_linklocal_v6;
+
+  /*! tree of all addresses/prefixes of this interface */
+  struct avl_tree addresses;
+
+  /*! listeners to be informed when an interface changes */
+  struct list_entity _listeners;
 
   /**
    * When an interface change handler triggers a 'interface not ready'
@@ -140,13 +177,6 @@ struct os_interface {
    */
   uint64_t retrigger_timeout;
 
-  /**
-   * used to store internal state of interfaces before
-   * configuring them for manet data forwarding.
-   * Only used by os_specific code.
-   */
-  uint32_t _original_state;
-
   /*! hook interfaces into global tree */
   struct avl_node _node;
 
@@ -154,18 +184,75 @@ struct os_interface {
   struct oonf_timer_instance _change_timer;
 };
 
+/**
+ * Representation of an IP address/prefix of a network interface of
+ * the operation system
+ */
+struct os_interface_ip {
+  struct avl_node _node;
+
+  struct netaddr prefixed_addr;
+  struct netaddr address;
+  struct netaddr prefix;
+
+  struct os_interface *interf;
+};
+
+/**
+ * operation system listener for interface events
+ */
+struct os_interface_listener {
+  /*! name of the interface this listener is interested in */
+  const char *name;
+
+  /*! true if this interface needs to be a mesh interface */
+  bool mesh;
+
+  /**
+   * Callback triggered when the interface changed
+   * @param listener pointer to this listener
+   * @return -1 if an error happened, and the listener should be
+   *   triggered again later, 0 if everything was fine
+   */
+  int (*if_changed)(struct os_interface_listener *);
+
+  /*! pointer to interface data */
+  struct os_interface *data;
+
+  /*! true if this listener still needs to process a change */
+  bool _dirty;
+
+  /*! hook to global list of listeners */
+  struct list_entity _node;
+};
+
+/* include os-specific headers */
+#if defined(__linux__)
+#include "subsystems/os_linux/os_interface_linux.h"
+#else
+#error "Unknown operation system"
+#endif
+
 /* prototypes for all os_system functions */
-static INLINE void os_interface_listener_add(struct os_interface_if_listener *);
-static INLINE void os_interface_listener_remove(struct os_interface_if_listener *);
-static INLINE int os_interface_state_set(const char *dev, bool up);
-static INLINE int os_interface_address_set(struct os_interface_address *addr);
-static INLINE void os_interface_address_interrupt(struct os_interface_address *addr);
-static INLINE int os_interface_mac_set_by_name(const char *, struct netaddr *mac);
+static INLINE struct os_interface *os_interface_add(struct os_interface_listener *);
+static INLINE void os_interface_remove(struct os_interface_listener *);
+static INLINE struct avl_tree *os_interface_get_tree(void);
 
-static INLINE int os_interface_update(struct os_interface_data *, const char *);
-static INLINE int os_interface_init_mesh(struct os_interface *);
-static INLINE void os_interface_cleanup_mesh(struct os_interface *);
+static INLINE void os_interface_trigger_handler(struct os_interface_listener *);
 
-static INLINE int os_interface_mac_set(struct os_interface_data *ifdata, struct netaddr *mac);
+static INLINE int os_interface_state_set(struct os_interface *, bool up);
+static INLINE int os_interface_mac_set(struct os_interface *interf, struct netaddr *mac);
+
+static INLINE int os_interface_address_set(struct os_interface_ip_change *addr);
+static INLINE void os_interface_address_interrupt(struct os_interface_ip_change *addr);
+
+static INLINE struct os_interface *os_interface_get_data_by_ifindex(
+    unsigned ifindex);
+static INLINE  struct os_interface *os_interface_get_data_by_ifbaseindex(
+    unsigned ifindex);
+static INLINE  const struct netaddr *os_interface_get_bindaddress(int af_type,
+    struct netaddr_acl *filter, struct os_interface *ifdata);
+static INLINE  const struct netaddr *os_interface_get_prefix_from_dst(
+    struct netaddr *destination, struct os_interface *ifdata);
 
 #endif /* OS_INTERFACE_H_ */

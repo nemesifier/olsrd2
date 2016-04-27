@@ -71,7 +71,7 @@ static INLINE int os_fd_get_fd(struct os_fd *);
 static INLINE int os_fd_invalidate(struct os_fd *);
 static INLINE bool os_fd_is_initialized(struct os_fd *);
 
-static INLINE int os_fd_bindto_interface(struct os_fd *, struct os_interface_data *data);
+static INLINE int os_fd_bindto_interface(struct os_fd *, struct os_interface *);
 static INLINE int os_fd_close(struct os_fd *);
 static INLINE int os_fd_listen(struct os_fd *, int n);
 
@@ -97,22 +97,22 @@ static INLINE int os_fd_get_socket_error(struct os_fd *, int *value);
 static INLINE ssize_t os_fd_sendto(struct os_fd *, const void *buf, size_t length,
     const union netaddr_socket *dst, bool dont_route);
 static INLINE ssize_t os_fd_recvfrom(struct os_fd *, void *buf, size_t length,
-    union netaddr_socket *source, const struct os_interface_data *interf);
+    union netaddr_socket *source, const struct os_interface *);
 static INLINE const char *os_fd_get_loopback_name(void);
 static INLINE ssize_t os_fd_sendfile(struct os_fd *, struct os_fd *,
     size_t offset, size_t count);
 
 static INLINE int os_fd_getsocket(struct os_fd *, const union netaddr_socket *bindto, bool tcp,
-    size_t recvbuf, const struct os_interface_data *, enum oonf_log_source log_src);
+    size_t recvbuf, const struct os_interface *, enum oonf_log_source log_src);
 static INLINE int os_fd_getrawsocket(struct os_fd *, const union netaddr_socket *bindto, int protocol,
-    size_t recvbuf, const struct os_interface_data *, enum oonf_log_source log_src);
+    size_t recvbuf, const struct os_interface *, enum oonf_log_source log_src);
 static INLINE int os_fd_configsocket(struct os_fd *, const union netaddr_socket *bindto,
-    size_t recvbuf, bool rawip, const struct os_interface_data *, enum oonf_log_source log_src);
+    size_t recvbuf, bool rawip, const struct os_interface *, enum oonf_log_source log_src);
 static INLINE int os_fd_set_nonblocking(struct os_fd *);
 static INLINE int os_fd_join_mcast_recv(struct os_fd *, const struct netaddr *multicast,
-    const struct os_interface_data *oif, enum oonf_log_source log_src);
+    const struct os_interface *, enum oonf_log_source log_src);
 static INLINE int os_fd_join_mcast_send(struct os_fd *, const struct netaddr *multicast,
-    const struct os_interface_data *oif, bool loop, enum oonf_log_source log_src);
+    const struct os_interface *, bool loop, enum oonf_log_source log_src);
 static INLINE int os_fd_set_dscp(struct os_fd *, int dscp, bool ipv6);
 static INLINE uint8_t *os_fd_skip_rawsocket_prefix(uint8_t *ptr, ssize_t *len, int af_type);
 

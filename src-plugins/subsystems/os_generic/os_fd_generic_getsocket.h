@@ -13,7 +13,7 @@
 
 EXPORT int os_fd_generic_getsocket(struct os_fd *sock,
     const union netaddr_socket *bind_to,
-    bool tcp, size_t recvbuf, const struct os_interface_data *interf,
+    bool tcp, size_t recvbuf, const struct os_interface *os_if,
     enum oonf_log_source log_src);
 
 #endif /* _OS_FD_GENERIC_GETSOCKET_H_ */

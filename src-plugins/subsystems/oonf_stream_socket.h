@@ -53,7 +53,7 @@
 #include "common/netaddr_acl.h"
 
 #include "subsystems/oonf_class.h"
-#include "subsystems/oonf_interface.h"
+#include "subsystems/os_interface.h"
 #include "subsystems/oonf_socket.h"
 #include "subsystems/oonf_timer.h"
 
@@ -296,7 +296,7 @@ struct oonf_stream_managed {
   struct oonf_stream_managed_config _managed_config;
 
   /*! listener to interface the socket is bound to */
-  struct oonf_interface_listener _if_listener;
+  struct os_interface_listener _if_listener;
 };
 
 EXPORT int oonf_stream_add(struct oonf_stream_socket *,

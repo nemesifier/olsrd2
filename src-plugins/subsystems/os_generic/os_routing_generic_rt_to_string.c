@@ -62,7 +62,7 @@ static const char *_route_types[] = {
 /**
  * Print OS route to string buffer
  * @param buf pointer to string buffer
- * @param route pointer to route
+ * @param route_parameter pointer to route
  * @return pointer to string buffer, NULL if an error happened
  */
 const char *

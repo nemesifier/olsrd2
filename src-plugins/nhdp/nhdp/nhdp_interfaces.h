@@ -55,9 +55,9 @@ struct nhdp_interface_domaindata;
 #include "common/list.h"
 #include "common/netaddr.h"
 #include "common/netaddr_acl.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_rfc5444.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 
 #include "nhdp/nhdp_db.h"
 
@@ -76,7 +76,7 @@ struct nhdp_interface {
   struct oonf_rfc5444_interface_listener rfc5444_if;
 
   /*! make sure interface data is available */
-  struct oonf_interface_listener core_if_listener;
+  struct os_interface_listener os_if_listener;
 
   /*! interval between two hellos sent through this interface */
   uint64_t refresh_interval;
@@ -309,9 +309,9 @@ nhdp_interface_link_get_by_originator(
  * @param nhdp_if pointer to nhdp interface
  * @return pointer to corresponding os_interface
  */
-static INLINE struct os_interface *
-nhdp_interface_get_coreif(struct nhdp_interface *nhdp_if) {
-  return nhdp_if->core_if_listener.interface;
+static INLINE struct os_interface_listener *
+nhdp_interface_get_if_listener(struct nhdp_interface *nhdp_if) {
+  return &nhdp_if->os_if_listener;
 }
 
 #endif /* NHDP_INTERFACES_H_ */

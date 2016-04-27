@@ -29,7 +29,6 @@ set (OONF_APP_DEFAULT_CFG_HANDLER Compact)
 IF (NOT OONF_STATIC_PLUGINS)
     set (OONF_STATIC_PLUGINS class
                              clock
-                             interface
                              layer2
                              packet_socket
                              socket

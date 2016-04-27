@@ -115,15 +115,15 @@ os_fd_event_wait(struct os_fd_select *sel) {
  * @param bindto bind socket to this address/port
  * @param tcp true if TCP socket, false if UDP socket
  * @param recvbuf size of receiver buffer
- * @param ifdata bind socket to this interface,
+ * @param os_if bind socket to this interface,
  *   NULL to not bind socket to interface
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
 os_fd_getsocket(struct os_fd *sock, const union netaddr_socket *bindto, bool tcp,
-    size_t recvbuf, const struct os_interface_data *ifdata, enum oonf_log_source log_src) {
-  return os_fd_generic_getsocket(sock, bindto, tcp, recvbuf, ifdata, log_src);
+    size_t recvbuf, const struct os_interface *os_if, enum oonf_log_source log_src) {
+  return os_fd_generic_getsocket(sock, bindto, tcp, recvbuf, os_if, log_src);
 }
 
 /**
@@ -132,15 +132,15 @@ os_fd_getsocket(struct os_fd *sock, const union netaddr_socket *bindto, bool tcp
  * @param bindto bind socket to this address/port
  * @param protocol bind socket to this protocol
  * @param recvbuf size of receiver buffer
- * @param ifdata bind socket to this interface,
+ * @param os_if bind socket to this interface,
  *   NULL to not bind socket to interface
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
 os_fd_getrawsocket(struct os_fd *sock, const union netaddr_socket *bindto, int protocol,
-    size_t recvbuf, const struct os_interface_data *ifdata, enum oonf_log_source log_src) {
-  return os_fd_generic_getrawsocket(sock, bindto, protocol, recvbuf, ifdata, log_src);
+    size_t recvbuf, const struct os_interface *os_if, enum oonf_log_source log_src) {
+  return os_fd_generic_getrawsocket(sock, bindto, protocol, recvbuf, os_if, log_src);
 }
 
 /**
@@ -149,15 +149,15 @@ os_fd_getrawsocket(struct os_fd *sock, const union netaddr_socket *bindto, int p
  * @param bindto bind socket to this address/port
  * @param recvbuf size of receiver buffer
  * @param rawip true if this is a raw ip socket, false otherwise
- * @param ifdata bind socket to this interface,
+ * @param os_if bind socket to this interface,
  *   NULL to not bind socket to interface
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
 os_fd_configsocket(struct os_fd *sock, const union netaddr_socket *bindto,
-    size_t recvbuf, bool rawip, const struct os_interface_data *ifdata, enum oonf_log_source log_src) {
-  return os_fd_generic_configsocket(sock, bindto, recvbuf, rawip, ifdata, log_src);
+    size_t recvbuf, bool rawip, const struct os_interface *os_if, enum oonf_log_source log_src) {
+  return os_fd_generic_configsocket(sock, bindto, recvbuf, rawip, os_if, log_src);
 }
 
 /**
@@ -174,22 +174,22 @@ os_fd_set_nonblocking(struct os_fd *sock) {
  * Redirect to generic mcast receiver join call
  * @param sock socket representation
  * @param multicast multicast group to join
- * @param oif outgoing interface for multicast,
+ * @param os_if outgoing interface for multicast,
  *   NULL if not interface specific
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
 os_fd_join_mcast_recv(struct os_fd *sock, const struct netaddr *multicast,
-    const struct os_interface_data *oif, enum oonf_log_source log_src) {
-  return os_fd_generic_join_mcast_recv(sock, multicast, oif, log_src);
+    const struct os_interface *os_if, enum oonf_log_source log_src) {
+  return os_fd_generic_join_mcast_recv(sock, multicast, os_if, log_src);
 }
 
 /**
  * Redirect to generic mcast sender join call
  * @param sock socket representation
  * @param multicast sending multicast group to join
- * @param oif outgoing interface for multicast,
+ * @param os_if outgoing interface for multicast,
  *   NULL if not interface specific
  * @param loop true if multicast should be locally looped
  * @param log_src logging source for error messages
@@ -197,8 +197,8 @@ os_fd_join_mcast_recv(struct os_fd *sock, const struct netaddr *multicast,
  */
 static INLINE int
 os_fd_join_mcast_send(struct os_fd *sock, const struct netaddr *multicast,
-    const struct os_interface_data *oif, bool loop, enum oonf_log_source log_src) {
-  return os_fd_generic_join_mcast_send(sock, multicast, oif, loop, log_src);
+    const struct os_interface *os_if, bool loop, enum oonf_log_source log_src) {
+  return os_fd_generic_join_mcast_send(sock, multicast, os_if, loop, log_src);
 }
 /**
  * Redirect to generic set_dscp call
@@ -516,7 +516,7 @@ os_fd_sendto(struct os_fd *sock, const void *buf, size_t length, const union net
  */
 static INLINE ssize_t
 os_fd_recvfrom(struct os_fd *sock, void *buf, size_t length, union netaddr_socket *source,
-    const struct os_interface_data *interf __attribute__((unused))) {
+    const struct os_interface *interf __attribute__((unused))) {
   socklen_t len = sizeof(*source);
   return recvfrom(sock->fd, buf, length, 0, &source->std, &len);
 }
@@ -528,7 +528,7 @@ os_fd_recvfrom(struct os_fd *sock, void *buf, size_t length, union netaddr_socke
  * @return -1 if an error happened, 0 otherwise
  */
 static INLINE int
-os_fd_bindto_interface(struct os_fd *sock, struct os_interface_data *data) {
+os_fd_bindto_interface(struct os_fd *sock, struct os_interface *data) {
   return setsockopt(sock->fd, SOL_SOCKET, SO_BINDTODEVICE, data->name, strlen(data->name) + 1);
 }
 

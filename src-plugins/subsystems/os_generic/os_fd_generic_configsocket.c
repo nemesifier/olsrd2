@@ -50,7 +50,7 @@
 #include "common/netaddr.h"
 #include "common/string.h"
 #include "core/oonf_logging.h"
-#include "subsystems/os_interface_data.h"
+#include "subsystems/os_interface.h"
 
 #include "subsystems/os_fd.h"
 #include "subsystems/os_generic/os_fd_generic_configsocket.h"
@@ -61,7 +61,7 @@
  * @param bind_to ip/port to bind the socket to
  * @param recvbuf size of input buffer for socket
  * @param rawip true if socket is a raw ip socket, false otherwise
- * @param interf pointer to interface to bind socket on,
+ * @param os_if pointer to interface to bind socket on,
  *   NULL if socket should not be bound to an interface
  * @param log_src logging source for error messages
  * @return -1 if an error happened, 0 otherwise
@@ -69,7 +69,7 @@
 int
 os_fd_generic_configsocket(struct os_fd *sock,
     const union netaddr_socket *bind_to, size_t recvbuf,
-    bool rawip, const struct os_interface_data *interf, enum oonf_log_source log_src) {
+    bool rawip, const struct os_interface *os_if, enum oonf_log_source log_src) {
   union netaddr_socket bindto;
   struct netaddr_str buf;
   socklen_t addrlen;
@@ -96,10 +96,10 @@ os_fd_generic_configsocket(struct os_fd *sock,
 
 #if defined(SO_BINDTODEVICE)
   /* this is binding the socket, not a multicast address */
-  if (interf != NULL && setsockopt(sock->fd, SOL_SOCKET, SO_BINDTODEVICE,
-      interf->name, strlen(interf->name) + 1) < 0) {
+  if (os_if != NULL && setsockopt(sock->fd, SOL_SOCKET, SO_BINDTODEVICE,
+      os_if->name, strlen(os_if->name) + 1) < 0) {
     OONF_WARN(log_src, "Cannot bind socket to interface %s: %s (%d)\n",
-        interf->name, strerror(errno), errno);
+        os_if->name, strerror(errno), errno);
     return -1;
   }
 #endif
@@ -115,7 +115,7 @@ os_fd_generic_configsocket(struct os_fd *sock,
 #endif
 
 #if defined(IP_RECVIF)
-  if (interf != NULL
+  if (os_if != NULL
       && setsockopt(sock, IPPROTO_IP, IP_RECVIF, &yes, sizeof(yes)) < 0) {
     OONF_WARN(log_src, "Cannot apply IP_RECVIF for %s: %s (%d)\n",
         netaddr_socket_to_string(&buf, &bindto), strerror(errno), errno);
@@ -143,8 +143,8 @@ os_fd_generic_configsocket(struct os_fd *sock,
 #endif
 
   /* add ipv6 interface scope if necessary */
-  if (interf != NULL && netaddr_socket_get_addressfamily(&bindto) == AF_INET6) {
-    bindto.v6.sin6_scope_id = interf->index;
+  if (os_if != NULL && netaddr_socket_get_addressfamily(&bindto) == AF_INET6) {
+    bindto.v6.sin6_scope_id = os_if->index;
   }
 
   /* bind the socket to the port number */

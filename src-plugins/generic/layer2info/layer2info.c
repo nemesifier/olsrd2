@@ -328,14 +328,14 @@ _cb_layer2info_help(struct oonf_telnet_data *con) {
  */
 static void
 _initialize_interface_values(struct oonf_layer2_net *net) {
-  struct os_interface_data *data;
+  struct os_interface *os_if;
 
-  data = &net->if_listener.interface->data;
+  os_if = net->if_listener.data;
 
   strscpy(_value_if, net->name, sizeof(_value_if));
-  snprintf(_value_if_index, sizeof(_value_if_index), "%u", data->index);
+  snprintf(_value_if_index, sizeof(_value_if_index), "%u", os_if->index);
   strscpy(_value_if_ident, net->if_ident, sizeof(_value_if_ident));
-  netaddr_to_string(&_value_if_local_addr, &data->mac);
+  netaddr_to_string(&_value_if_local_addr, &os_if->mac);
 
   if (net->last_seen) {
     oonf_clock_toIntervalString(&_value_if_lastseen,

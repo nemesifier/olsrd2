@@ -55,9 +55,9 @@
 #include "config/cfg_schema.h"
 #include "core/oonf_subsystem.h"
 #include "subsystems/oonf_clock.h"
-#include "subsystems/oonf_interface.h"
 #include "subsystems/oonf_layer2.h"
 #include "subsystems/oonf_timer.h"
+#include "subsystems/os_interface.h"
 
 #include "eth_listener/eth_listener.h"
 #include "eth_listener/ethtool-copy.h"
@@ -98,9 +98,9 @@ static struct _eth_config _config;
 /* plugin declaration */
 static const char *_dependencies[] = {
   OONF_CLOCK_SUBSYSTEM,
-  OONF_INTERFACE_SUBSYSTEM,
   OONF_LAYER2_SUBSYSTEM,
   OONF_TIMER_SUBSYSTEM,
+  OONF_OS_INTERFACE_SUBSYSTEM,
 };
 static struct oonf_subsystem _eth_listener_subsystem = {
   .name = OONF_ETH_LISTENER_SUBSYSTEM,
@@ -161,7 +161,7 @@ _cleanup(void) {
 static void
 _cb_transmission_event(struct oonf_timer_instance *ptr __attribute((unused))) {
   struct oonf_layer2_net *l2net;
-  struct os_interface *interf;
+  struct os_interface *os_if;
   struct ethtool_cmd cmd;
   struct ifreq req;
   int64_t ethspeed;
@@ -170,7 +170,7 @@ _cb_transmission_event(struct oonf_timer_instance *ptr __attribute((unused))) {
   struct isonumber_str ibuf;
 #endif
 
-  avl_for_each_element(oonf_interface_get_tree(), interf, _node) {
+  avl_for_each_element(os_interface_get_tree(), os_if, _node) {
     /* initialize ethtool command */
     memset(&cmd, 0, sizeof(cmd));
     cmd.cmd = ETHTOOL_GSET;
@@ -179,17 +179,17 @@ _cb_transmission_event(struct oonf_timer_instance *ptr __attribute((unused))) {
     memset(&req, 0, sizeof(req));
     req.ifr_data = (void *)&cmd;
 
-    if (interf->data.base_index != interf->data.index) {
+    if (os_if->base_index != os_if->index) {
       /* get name of base interface */
-      if (if_indextoname(interf->data.base_index, req.ifr_name) == NULL) {
+      if (if_indextoname(os_if->base_index, req.ifr_name) == NULL) {
         OONF_WARN(LOG_ETH, "Could not get interface name of index %u: %s (%d)",
-            interf->data.base_index, strerror(errno), errno);
+            os_if->base_index, strerror(errno), errno);
         continue;
       }
     }
     else {
       /* copy interface name directly */
-      strscpy(req.ifr_name, interf->data.name, IF_NAMESIZE);
+      strscpy(req.ifr_name, os_if->name, IF_NAMESIZE);
     }
 
     /* request ethernet information from kernel */
@@ -199,7 +199,7 @@ _cb_transmission_event(struct oonf_timer_instance *ptr __attribute((unused))) {
     }
 
     /* layer-2 object for this interface */
-    l2net = oonf_layer2_net_add(interf->data.name);
+    l2net = oonf_layer2_net_add(os_if->name);
     if (l2net == NULL) {
       continue;
     }
@@ -213,7 +213,8 @@ _cb_transmission_event(struct oonf_timer_instance *ptr __attribute((unused))) {
 
     /* set corresponding database entries */
     OONF_DEBUG(LOG_ETH, "Set default link speed of interface %s to %s",
-        interf->data.name, isonumber_from_s64(&ibuf, ethspeed, "bit/s", 0, false, false));
+        os_if->name,
+        isonumber_from_s64(&ibuf, ethspeed, "bit/s", 0, false, false));
 
     oonf_layer2_set_value(&l2net->neighdata[OONF_LAYER2_NEIGH_RX_BITRATE],
         _l2_origin, ethspeed);
