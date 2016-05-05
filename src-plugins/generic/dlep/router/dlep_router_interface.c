@@ -211,7 +211,7 @@ void
 dlep_router_apply_interface_settings(struct dlep_router_if *interf) {
   struct dlep_extension *ext;
   struct os_interface *os_if;
-  const struct netaddr *result;
+  const struct os_interface_ip *result;
   union netaddr_socket local, remote;
 #ifdef OONF_LOG_DEBUG_INFO
   struct netaddr_str nbuf;
@@ -231,7 +231,7 @@ dlep_router_apply_interface_settings(struct dlep_router_if *interf) {
     result = os_interface_get_prefix_from_dst(&interf->connect_to_addr, os_if);
     if (result) {
       /* initialize local and remote socket */
-      netaddr_socket_init(&local, result, 0, os_if->index);
+      netaddr_socket_init(&local, &result->address, 0, os_if->index);
       netaddr_socket_init(&remote,
           &interf->connect_to_addr, interf->connect_to_port, os_if->index);
 

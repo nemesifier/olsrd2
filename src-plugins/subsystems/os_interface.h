@@ -252,7 +252,7 @@ static INLINE  struct os_interface *os_interface_get_data_by_ifbaseindex(
     unsigned ifindex);
 static INLINE  const struct netaddr *os_interface_get_bindaddress(int af_type,
     struct netaddr_acl *filter, struct os_interface *ifdata);
-static INLINE  const struct netaddr *os_interface_get_prefix_from_dst(
+static INLINE  const struct os_interface_ip *os_interface_get_prefix_from_dst(
     struct netaddr *destination, struct os_interface *ifdata);
 
 #endif /* OS_INTERFACE_H_ */

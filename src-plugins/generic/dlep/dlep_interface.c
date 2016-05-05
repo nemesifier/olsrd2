@@ -185,6 +185,11 @@ _cb_receive_udp(struct oonf_packet_socket *pkt,
     return;
   }
 
+  if (netaddr_socket_cmp(from, &pkt->local_socket) == 0) {
+    /* we hear outselves, ignore it */
+    return;
+  }
+
   if (memcmp(buffer, _DLEP_PREFIX, sizeof(_DLEP_PREFIX)-1) != 0) {
     OONF_WARN(interf->session.log_source,
         "Incoming UDP packet with unknown signature");

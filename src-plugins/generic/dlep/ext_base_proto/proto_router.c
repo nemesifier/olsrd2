@@ -257,6 +257,7 @@ _router_process_peer_offer(
   struct dlep_router_if *router_if;
   union netaddr_socket local, remote;
   struct dlep_parser_value *value;
+  const struct os_interface_ip *ip;
   const struct netaddr *result = NULL;
   struct netaddr addr;
   uint16_t port;
@@ -290,8 +291,9 @@ _router_process_peer_offer(
     }
     else if (netaddr_is_in_subnet(&NETADDR_IPV6_LINKLOCAL, &addr)
         || result == NULL) {
-      result = os_interface_get_prefix_from_dst(&addr, ifdata);
-      if (result) {
+      ip = os_interface_get_prefix_from_dst(&addr, ifdata);
+      if (ip) {
+        result = &ip->address;
         netaddr_socket_init(&remote, &addr, port, ifdata->index);
       }
     }
@@ -309,8 +311,9 @@ _router_process_peer_offer(
       /* TLS not supported at the moment */
     }
     else {
-      result = os_interface_get_prefix_from_dst(&addr, ifdata);
-      if (result) {
+      ip = os_interface_get_prefix_from_dst(&addr, ifdata);
+      if (ip) {
+        result = &ip->address;
         netaddr_socket_init(&remote, &addr, port, ifdata->index);
       }
     }
@@ -320,13 +323,14 @@ _router_process_peer_offer(
   /* remote address of incoming session */
   if (!result) {
     netaddr_from_socket(&addr, &session->remote_socket);
-    result = os_interface_get_prefix_from_dst(&addr, ifdata);
-    if (!result) {
+    ip = os_interface_get_prefix_from_dst(&addr, ifdata);
+    if (!ip) {
       /* no possible way to communicate */
       OONF_DEBUG(session->log_source,
           "No matching prefix for incoming connection found");
       return -1;
     }
+    result = &ip->address;
     netaddr_socket_init(&remote, &addr, port, ifdata->index);
   }
 

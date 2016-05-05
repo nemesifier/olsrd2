@@ -166,7 +166,7 @@ os_interface_get_bindaddress(int af_type,
   return os_interface_generic_get_bindaddress(af_type, filter, ifdata);
 }
 
-static INLINE  const struct netaddr *
+static INLINE const struct os_interface_ip *
 os_interface_get_prefix_from_dst(
     struct netaddr *destination, struct os_interface *ifdata) {
   return os_interface_generic_get_prefix_from_dst(destination, ifdata);

@@ -84,17 +84,16 @@ os_interface_generic_get_data_by_ifindex(unsigned ifindex) {
  * @param os_if interface data, NULL to search over all interfaces
  * @return network prefix (including full host), NULL if not found
  */
-const struct netaddr *
+const struct os_interface_ip *
 os_interface_generic_get_prefix_from_dst(
     struct netaddr *destination, struct os_interface *os_if) {
-  struct os_interface_ip *ip;
-  const struct netaddr *result;
+  const struct os_interface_ip *ip;
 
   if (os_if == NULL) {
     avl_for_each_element(os_interface_get_tree(), os_if, _node) {
-      result = os_interface_get_prefix_from_dst(destination, os_if);
-      if (result) {
-        return result;
+      ip = os_interface_get_prefix_from_dst(destination, os_if);
+      if (ip) {
+        return ip;
       }
     }
     return NULL;
@@ -102,7 +101,7 @@ os_interface_generic_get_prefix_from_dst(
 
   avl_for_each_element(&os_if->addresses, ip, _node) {
     if (netaddr_is_in_subnet(&ip->prefix, destination)) {
-      return &ip->prefix;
+      return ip;
     }
   }
 

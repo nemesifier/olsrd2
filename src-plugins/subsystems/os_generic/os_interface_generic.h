@@ -19,7 +19,7 @@ EXPORT struct os_interface *
     os_interface_generic_get_data_by_ifbaseindex(unsigned ifindex);
 EXPORT struct os_interface *
     os_interface_generic_get_data_by_ifindex(unsigned ifindex);
-EXPORT const struct netaddr *os_interface_generic_get_prefix_from_dst(
+EXPORT const struct os_interface_ip *os_interface_generic_get_prefix_from_dst(
     struct netaddr *destination, struct os_interface *os_if);
 
 #endif /* OS_INTERFACE_GENERIC_H_ */
