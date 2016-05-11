@@ -455,8 +455,8 @@ _nl80211_if_add(const char *name) {
     return NULL;
   }
 
-  /* initialize physical interface */
-  interf->phy_if = -1;
+  /* initialize interface */
+  interf->wifi_phy_if = -1;
 
   OONF_DEBUG(LOG_NL80211, "Add if %s", name);
   avl_insert(&_nl80211_if_tree, &interf->_node);

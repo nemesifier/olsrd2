@@ -97,7 +97,7 @@ static uint64_t _get_bandwidth(uint32_t width);
 void
 nl80211_send_get_interface(struct os_system_netlink *nl,
     struct nlmsghdr *nl_msg, struct genlmsghdr *hdr, struct nl80211_if *interf) {
-  int if_index = nl80211_get_if_index(interf);
+  int if_index = nl80211_get_if_baseindex(interf);
 
   hdr->cmd = NL80211_CMD_GET_INTERFACE;
 
@@ -127,7 +127,7 @@ nl80211_process_get_interface_result(struct nl80211_if *interf,
     return;
   }
 
-  interf->phy_if = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
+  interf->wifi_phy_if = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
 
   if (tb_msg[NL80211_ATTR_SSID]) {
     char ssid[33];

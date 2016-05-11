@@ -180,9 +180,9 @@ nl80211_send_get_wiphy(struct os_system_netlink *nl,
 
   /* add interface index to the request */
   os_system_linux_netlink_addreq(nl, nl_msg, NL80211_ATTR_WIPHY,
-      &interf->phy_if, sizeof(interf->phy_if));
+      &interf->wifi_phy_if, sizeof(interf->wifi_phy_if));
 
-  OONF_DEBUG(LOG_NL80211, "Send GET_WIPHY to phydev %d", interf->phy_if);
+  OONF_DEBUG(LOG_NL80211, "Send GET_WIPHY to phydev %d", interf->wifi_phy_if);
 }
 
 /**
@@ -206,7 +206,7 @@ nl80211_process_get_wiphy_result(struct nl80211_if *interf,
       genlmsg_attrlen(gnlh, 0), NULL);
 
   if (tb_msg[NL80211_ATTR_WIPHY]) {
-    interf->phy_if = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
+    interf->wifi_phy_if = nla_get_u32(tb_msg[NL80211_ATTR_WIPHY]);
   }
   else {
     return;

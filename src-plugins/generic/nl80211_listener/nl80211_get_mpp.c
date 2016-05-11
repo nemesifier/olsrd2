@@ -96,7 +96,7 @@
 void
 nl80211_send_get_mpp(struct os_system_netlink *nl, struct nlmsghdr *nl_msg,
     struct genlmsghdr *hdr, struct nl80211_if *interf) {
-  int if_index = nl80211_get_if_index(interf);
+  int if_index = nl80211_get_if_baseindex(interf);
 
   hdr->cmd = NL80211_CMD_GET_MPP;
   nl_msg->nlmsg_flags |= NLM_F_DUMP;
@@ -128,7 +128,7 @@ nl80211_process_get_mpp_result(struct nl80211_if *interf,
   nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0),
       genlmsg_attrlen(gnlh, 0), NULL);
 
-  if (nl80211_get_if_index(interf) != nla_get_u32(tb[NL80211_ATTR_IFINDEX])) {
+  if (nl80211_get_if_baseindex(interf) != nla_get_u32(tb[NL80211_ATTR_IFINDEX])) {
     /* wrong interface ? */
     return;
   }

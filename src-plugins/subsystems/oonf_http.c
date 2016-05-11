@@ -66,6 +66,11 @@
 
 #include "subsystems/oonf_http.h"
 
+#ifndef O_DIRECTORY
+/* uClibc does not define it */
+#define O_DIRECTORY     00200000        /* must be a directory */
+#endif
+
 /* Definitions */
 #define LOG_HTTP _oonf_http_subsystem.logging
 

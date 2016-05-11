@@ -101,7 +101,7 @@ static int64_t _get_bitrate(struct nlattr *bitrate_attr);
 void
 nl80211_send_get_station_dump(struct os_system_netlink *nl,
     struct nlmsghdr *nl_msg, struct genlmsghdr *hdr, struct nl80211_if *interf) {
-  int if_index = nl80211_get_if_index(interf);
+  int if_index = nl80211_get_if_baseindex(interf);
 
   hdr->cmd = NL80211_CMD_GET_STATION;
   nl_msg->nlmsg_flags |= NLM_F_DUMP;
@@ -159,7 +159,7 @@ nl80211_process_get_station_dump_result(struct nl80211_if *interf,
     return;
   }
 
-  if (nl80211_get_if_index(interf) != nla_get_u32(tb[NL80211_ATTR_IFINDEX])) {
+  if (nl80211_get_if_baseindex(interf) != nla_get_u32(tb[NL80211_ATTR_IFINDEX])) {
     /* wrong interface */
     return;
   }
