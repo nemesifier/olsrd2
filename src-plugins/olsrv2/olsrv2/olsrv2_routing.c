@@ -426,6 +426,8 @@ _add_entry(struct nhdp_domain *domain, struct os_route_key *prefix) {
   rtentry->route.cb_finished = _cb_route_finished;
   rtentry->route.p.family = netaddr_get_address_family(&prefix->dst);
 
+  rtentry->route.p.type = OS_ROUTE_UNICAST;
+
   avl_insert(&_routing_tree[domain->index], &rtentry->_node);
   return rtentry;
 }

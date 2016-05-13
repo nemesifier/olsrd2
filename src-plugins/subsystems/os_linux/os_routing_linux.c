@@ -270,10 +270,11 @@ os_routing_linux_set(struct os_route *route, bool set, bool del_similar) {
     }
   }
 
-  if (netaddr_get_address_family(&os_rt.p.gw) == AF_UNSPEC
+  if (netaddr_is_unspec(&os_rt.p.gw)
+      && netaddr_get_address_family(&os_rt.p.key.dst) == AF_INET
       && netaddr_get_prefix_length(&os_rt.p.key.dst) == netaddr_get_maxprefix(&os_rt.p.key.dst)) {
     /* use destination as gateway, to 'force' linux kernel to do proper source address selection */
-    os_rt.p.gw = os_rt.p.key.dst;
+    memcpy(&os_rt.p.gw, &os_rt.p.key.dst, sizeof(os_rt.p.gw));
   }
 
   OONF_DEBUG(LOG_OS_ROUTING, "%sset route: %s", set ? "" : "re",
