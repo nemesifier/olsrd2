@@ -466,7 +466,7 @@ _insert_into_working_tree(struct olsrv2_tc_target *target,
 #ifdef OONF_LOG_DEBUG_INFO
   struct netaddr_str nbuf1, nbuf2;
 #endif
-  if (linkcost >= RFC7181_METRIC_INFINITE) {
+  if (linkcost > RFC7181_METRIC_MAX) {
     return;
   }
 
@@ -871,7 +871,7 @@ _handle_nhdp_routes(struct nhdp_domain *domain) {
     neigh_data = nhdp_domain_get_neighbordata(domain, neigh);
     neighcost = neigh_data->metric.out;
 
-    if (neigh->symmetric == 0 || neighcost >= RFC7181_METRIC_INFINITE) {
+    if (neigh->symmetric == 0 || neighcost > RFC7181_METRIC_MAX) {
       continue;
     }
 
@@ -904,7 +904,7 @@ _handle_nhdp_routes(struct nhdp_domain *domain) {
 
         /* get new pathcost to 2hop neighbor */
         l2hop_pathcost = nhdp_domain_get_l2hopdata(domain, l2hop)->metric.out;
-        if (l2hop_pathcost >= RFC7181_METRIC_INFINITE) {
+        if (l2hop_pathcost > RFC7181_METRIC_MAX) {
           continue;
         }
 
